@@ -359,8 +359,9 @@ function renderReplayLine(logs) {
 
 // ---- Search ----
 async function searchAlbums() {
-  const token = await getValidToken();
+  const token = localStorage.getItem('spotify_token');
   if (!token) { loginSpotify(); return; }
+  spotifyToken = token;
 
   const query = document.getElementById('search-input').value.trim();
   if (!query) return;
@@ -368,11 +369,20 @@ async function searchAlbums() {
   document.getElementById('recent-section').classList.add('hidden');
   document.getElementById('search-results-section').classList.remove('hidden');
 
-  const data = await spotifyFetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=20');
-  if (!data || !data.albums || !data.albums.items) {
-    alert('Search failed — please try again.');
-    return;
+  const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=20', {
+    headers: { Authorization: 'Bearer ' + token }
+  });
+
+  if (res.status === 401) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) { loginSpotify(); return; }
+    return searchAlbums();
   }
+
+  if (!res.ok) { alert('Search failed — please try again.'); return; }
+
+  const data = await res.json();
+  if (!data.albums || !data.albums.items) { alert('No results found.'); return; }
 
   const albums = data.albums.items;
   const spotifyIds = albums.map(function(a) { return a.id; });
