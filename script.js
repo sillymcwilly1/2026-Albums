@@ -10,12 +10,13 @@ let currentAlbum = null;
 let currentTracks = [];
 let selectedTracks = [];
 let existingRating = null;
+let barChartInstance = null;
 
 function initSupabase() {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// ---- Spotify Auth (PKCE flow) ----
+// ---- Spotify Auth (PKCE) ----
 function generateRandomString(length) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
@@ -38,7 +39,6 @@ function loginSpotify() {
   const scopes = encodeURIComponent('user-read-private');
   const codeVerifier = generateRandomString(64);
   localStorage.setItem('code_verifier', codeVerifier);
-
   generateCodeChallenge(codeVerifier).then(function(codeChallenge) {
     window.location.href = 'https://accounts.spotify.com/authorize?client_id=' + SPOTIFY_CLIENT_ID +
       '&response_type=code' +
@@ -53,10 +53,8 @@ async function handleSpotifyCallback() {
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
   if (!code) return false;
-
   const codeVerifier = localStorage.getItem('code_verifier');
   const redirectUri = window.location.origin + window.location.pathname;
-
   const response = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -68,15 +66,12 @@ async function handleSpotifyCallback() {
       code_verifier: codeVerifier
     })
   });
-
   const tokenData = await response.json();
   if (tokenData.access_token) {
     spotifyToken = tokenData.access_token;
     localStorage.setItem('spotify_token', tokenData.access_token);
     localStorage.setItem('spotify_token_time', Date.now());
-    if (tokenData.refresh_token) {
-      localStorage.setItem('spotify_refresh_token', tokenData.refresh_token);
-    }
+    if (tokenData.refresh_token) localStorage.setItem('spotify_refresh_token', tokenData.refresh_token);
     window.history.replaceState({}, document.title, window.location.pathname);
     return true;
   }
@@ -107,26 +102,18 @@ async function searchAlbums() {
   if (!spotifyToken) { loginSpotify(); return; }
   const query = document.getElementById('search-input').value.trim();
   if (!query) return;
-
   const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=20', {
     headers: { Authorization: 'Bearer ' + spotifyToken }
   });
-
   if (res.status === 401) { loginSpotify(); return; }
   const data = await res.json();
   const albums = data.albums.items;
-
   const spotifyIds = albums.map(function(a) { return a.id; });
-  const { data: ratedAlbums } = await db
-    .from('albums')
-    .select('spotify_id, ratings(rating)')
-    .in('spotify_id', spotifyIds);
-
+  const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
   const ratedMap = {};
   (ratedAlbums || []).forEach(function(a) {
     if (a.ratings && a.ratings.length > 0) ratedMap[a.spotify_id] = a.ratings[0].rating;
   });
-
   const container = document.getElementById('search-results');
   container.innerHTML = albums.map(function(album) {
     const img = album.images && album.images[0] ? album.images[0].url : '';
@@ -141,25 +128,17 @@ async function searchAlbums() {
 // ---- Open Album Modal ----
 async function openAlbum(spotifyId) {
   if (!spotifyToken) { loginSpotify(); return; }
-
   const [albumRes, tracksRes] = await Promise.all([
     fetch('https://api.spotify.com/v1/albums/' + spotifyId, { headers: { Authorization: 'Bearer ' + spotifyToken } }),
     fetch('https://api.spotify.com/v1/albums/' + spotifyId + '/tracks?limit=50', { headers: { Authorization: 'Bearer ' + spotifyToken } })
   ]);
-
   const album = await albumRes.json();
   const tracksData = await tracksRes.json();
   currentAlbum = album;
   currentTracks = tracksData.items;
   selectedTracks = [];
   existingRating = null;
-
-  const { data: existing } = await db
-    .from('albums')
-    .select('id, ratings(*)')
-    .eq('spotify_id', spotifyId)
-    .single();
-
+  const { data: existing } = await db.from('albums').select('id, ratings(*)').eq('spotify_id', spotifyId).single();
   let ratingVal = '';
   let commentVal = '';
   if (existing && existing.ratings && existing.ratings.length > 0) {
@@ -168,7 +147,6 @@ async function openAlbum(spotifyId) {
     commentVal = existingRating.comments || '';
     selectedTracks = existingRating.top_songs || [];
   }
-
   const tracksHTML = currentTracks.map(function(t, i) {
     const isSelected = selectedTracks.includes(t.name);
     const safeName = t.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -176,7 +154,6 @@ async function openAlbum(spotifyId) {
       '<span class="track-check">' + (isSelected ? '★' : '☆') + '</span>' +
       '<span>' + (i+1) + '. ' + t.name + '</span></div>';
   }).join('');
-
   document.getElementById('modal-body').innerHTML =
     '<div class="modal-album-header">' +
     '<img src="' + (album.images && album.images[0] ? album.images[0].url : '') + '" alt="' + album.name + '" />' +
@@ -190,7 +167,6 @@ async function openAlbum(spotifyId) {
     '<label>Top Songs (tap to mark)</label>' +
     '<div class="tracks-list">' + tracksHTML + '</div>' +
     '<button class="save-btn" onclick="saveRating(\'' + spotifyId + '\')">💾 Save Rating</button>';
-
   document.getElementById('modal').classList.remove('hidden');
 }
 
@@ -214,57 +190,122 @@ function closeModal() {
 async function saveRating(spotifyId) {
   const rating = parseFloat(document.getElementById('rating-input').value);
   const comments = document.getElementById('comment-input').value;
-
   if (isNaN(rating) || rating < 0 || rating > 10) {
     alert('Please enter a rating between 0 and 10');
     return;
   }
-
-  const { data: albumRow } = await db
-    .from('albums')
-    .upsert({
-      spotify_id: spotifyId,
-      name: currentAlbum.name,
-      artist: currentAlbum.artists[0] ? currentAlbum.artists[0].name : '',
-      image_url: currentAlbum.images && currentAlbum.images[0] ? currentAlbum.images[0].url : '',
-      release_year: currentAlbum.release_date ? currentAlbum.release_date.split('-')[0] : ''
-    }, { onConflict: 'spotify_id' })
-    .select()
-    .single();
-
+  const { data: albumRow } = await db.from('albums').upsert({
+    spotify_id: spotifyId,
+    name: currentAlbum.name,
+    artist: currentAlbum.artists[0] ? currentAlbum.artists[0].name : '',
+    image_url: currentAlbum.images && currentAlbum.images[0] ? currentAlbum.images[0].url : '',
+    release_year: currentAlbum.release_date ? currentAlbum.release_date.split('-')[0] : ''
+  }, { onConflict: 'spotify_id' }).select().single();
   if (existingRating) {
     await db.from('ratings').update({
-      rating: rating,
-      comments: comments,
-      top_songs: selectedTracks,
-      updated_at: new Date().toISOString()
+      rating: rating, comments: comments, top_songs: selectedTracks, updated_at: new Date().toISOString()
     }).eq('id', existingRating.id);
   } else {
-    await db.from('ratings').insert({
-      album_id: albumRow.id,
-      rating: rating,
-      comments: comments,
-      top_songs: selectedTracks
-    });
+    await db.from('ratings').insert({ album_id: albumRow.id, rating: rating, comments: comments, top_songs: selectedTracks });
   }
-
   closeModal();
   alert('Rating saved! ✅');
   searchAlbums();
 }
 
-// ---- Rankings ----
-async function loadRankings() {
-  const { data } = await db
-    .from('ratings')
-    .select('*, albums(*)')
-    .order('rating', { ascending: false });
+// ---- Charts ----
+function renderBarChart(data) {
+  const sorted = [...data].sort(function(a, b) { return b.rating - a.rating; });
+  const labels = sorted.map(function(r) {
+    const name = r.albums.name;
+    return name.length > 15 ? name.substring(0, 15) + '…' : name;
+  });
+  const values = sorted.map(function(r) { return r.rating; });
+  const colors = values.map(function(v) {
+    if (v >= 8) return '#1DB954';
+    if (v >= 6) return '#17a844';
+    if (v >= 4) return '#b3b300';
+    return '#cc3300';
+  });
 
-  const container = document.getElementById('rankings-list');
-  if (!data || data.length === 0) {
-    container.innerHTML = '<div class="empty-state">No ratings yet. Search for an album to get started!</div>';
+  if (barChartInstance) barChartInstance.destroy();
+  const ctx = document.getElementById('barChart').getContext('2d');
+  barChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function(items) { return sorted[items[0].dataIndex].albums.name; },
+            label: function(item) { return item.raw + ' / 10'; }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: '#222' } },
+        y: { min: 0, max: 10, ticks: { color: '#aaa' }, grid: { color: '#222' } }
+      }
+    }
+  });
+}
+
+function renderTopSongs(data) {
+  const songCounts = {};
+  data.forEach(function(r) {
+    if (r.top_songs && r.top_songs.length > 0) {
+      r.top_songs.forEach(function(song) {
+        songCounts[song] = (songCounts[song] || 0) + 1;
+      });
+    }
+  });
+
+  const sorted = Object.entries(songCounts)
+    .sort(function(a, b) { return b[1] - a[1]; })
+    .slice(0, 8);
+
+  const container = document.getElementById('top-songs-chart');
+
+  if (sorted.length === 0) {
+    container.innerHTML = '<p style="color:#555;font-size:0.85rem">No top songs marked yet.</p>';
     return;
   }
+
+  const max = sorted[0][1];
+  container.innerHTML = sorted.map(function(entry) {
+    const song = entry[0];
+    const count = entry[1];
+    const pct = Math.round((count / max) * 100);
+    const displayName = song.length > 22 ? song.substring(0, 22) + '…' : song;
+    return '<div class="top-song-row">' +
+      '<div class="top-song-label"><span>' + displayName + '</span><span>★ ' + count + '</span></div>' +
+      '<div class="top-song-bar-bg"><div class="top-song-bar-fill" style="width:' + pct + '%"></div></div>' +
+      '</div>';
+  }).join('');
+}
+
+// ---- Rankings ----
+async function loadRankings() {
+  const { data } = await db.from('ratings').select('*, albums(*)').order('rating', { ascending: false });
+  const container = document.getElementById('rankings-list');
+
+  if (!data || data.length === 0) {
+    container.innerHTML = '<div class="empty-state">No ratings yet. Search for an album to get started!</div>';
+    document.getElementById('top-songs-chart').innerHTML = '<p style="color:#555;font-size:0.85rem">No data yet.</p>';
+    return;
+  }
+
+  renderBarChart(data);
+  renderTopSongs(data);
 
   container.innerHTML = data.map(function(r, i) {
     const topSongs = r.top_songs && r.top_songs.length > 0 ?
