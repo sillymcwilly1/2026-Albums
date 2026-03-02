@@ -169,3 +169,54 @@ textarea { min-height: 80px; resize: vertical; font-family: inherit; }
 .big-rating { font-size: 1.4rem; font-weight: bold; color: #1DB954; }
 
 .empty-state { text-align: center; color: #555; padding: 60px 20px; font-size: 1rem; }
+
+/* Charts */
+.charts-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 600px) {
+  .charts-section { grid-template-columns: 1fr; }
+}
+
+.chart-card {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.chart-card h3 {
+  font-size: 0.9rem;
+  color: #aaa;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#top-songs-chart { display: flex; flex-direction: column; gap: 8px; }
+
+.top-song-row { display: flex; flex-direction: column; gap: 4px; }
+
+.top-song-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #ccc;
+}
+
+.top-song-bar-bg {
+  background: #2a2a2a;
+  border-radius: 4px;
+  height: 8px;
+  width: 100%;
+}
+
+.top-song-bar-fill {
+  background: #1DB954;
+  border-radius: 4px;
+  height: 8px;
+  transition: width 0.4s ease;
+}
