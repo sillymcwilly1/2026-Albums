@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Album Rater</title>
   <link rel="stylesheet" href="style.css" />
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <div id="app">
@@ -29,6 +30,20 @@
     <!-- Rankings Page -->
     <div id="page-rankings" class="page hidden">
       <h2>My Album Rankings</h2>
+
+      <!-- Charts -->
+      <div class="charts-section">
+        <div class="chart-card">
+          <h3>Albums by Rating</h3>
+          <canvas id="barChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Most Marked Top Songs</h3>
+          <div id="top-songs-chart"></div>
+        </div>
+      </div>
+
+      <!-- Rankings List -->
       <div id="rankings-list"></div>
     </div>
 
