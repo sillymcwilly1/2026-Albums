@@ -24,7 +24,14 @@
         <input type="text" id="search-input" placeholder="Search for an album..." />
         <button onclick="searchAlbums()">Search</button>
       </div>
-      <div id="search-results" class="album-grid"></div>
+      <div id="recent-section">
+  <h3 class="section-label">Recently Played</h3>
+  <div id="recent-results" class="album-grid"></div>
+</div>
+<div id="search-results-section" class="hidden">
+  <h3 class="section-label">Search Results</h3>
+  <div id="search-results" class="album-grid"></div>
+</div>
     </div>
 
     <!-- Rankings Page -->
