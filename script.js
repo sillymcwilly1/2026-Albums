@@ -97,11 +97,53 @@ function showPage(page) {
   if (page === 'rankings') loadRankings();
 }
 
+// ---- Recently Played ----
+async function loadRecentlyPlayed() {
+  if (!spotifyToken) return;
+  const res = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50', {
+    headers: { Authorization: 'Bearer ' + spotifyToken }
+  });
+  if (!res.ok) return;
+  const data = await res.json();
+
+  const seenIds = new Set();
+  const albums = [];
+  data.items.forEach(function(item) {
+    const album = item.track.album;
+    if (!seenIds.has(album.id)) {
+      seenIds.add(album.id);
+      albums.push(album);
+    }
+  });
+
+  const spotifyIds = albums.map(function(a) { return a.id; });
+  const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
+  const ratedMap = {};
+  (ratedAlbums || []).forEach(function(a) {
+    if (a.ratings && a.ratings.length > 0) ratedMap[a.spotify_id] = a.ratings[0].rating;
+  });
+
+  const container = document.getElementById('recent-results');
+  if (!container) return;
+  container.innerHTML = albums.map(function(album) {
+    const img = album.images && album.images[0] ? album.images[0].url : '';
+    const artist = album.artists && album.artists[0] ? album.artists[0].name : '';
+    const badge = ratedMap[album.id] !== undefined ? '<span class="rating-badge">' + ratedMap[album.id] + '/10</span>' : '';
+    return '<div class="album-card" onclick="openAlbum(\'' + album.id + '\')">' +
+      '<img src="' + img + '" alt="' + album.name + '" />' +
+      '<div class="album-card-info"><h3>' + album.name + '</h3><p>' + artist + '</p>' + badge + '</div></div>';
+  }).join('');
+}
+
 // ---- Search ----
 async function searchAlbums() {
   if (!spotifyToken) { loginSpotify(); return; }
   const query = document.getElementById('search-input').value.trim();
   if (!query) return;
+
+  document.getElementById('recent-section').classList.add('hidden');
+  document.getElementById('search-results-section').classList.remove('hidden');
+
   const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=20', {
     headers: { Authorization: 'Bearer ' + spotifyToken }
   });
@@ -227,18 +269,13 @@ function renderBarChart(data) {
     if (v >= 4) return '#b3b300';
     return '#cc3300';
   });
-
   if (barChartInstance) barChartInstance.destroy();
   const ctx = document.getElementById('barChart').getContext('2d');
   barChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
-      datasets: [{
-        data: values,
-        backgroundColor: colors,
-        borderRadius: 4
-      }]
+      datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }]
     },
     options: {
       responsive: true,
@@ -268,18 +305,12 @@ function renderTopSongs(data) {
       });
     }
   });
-
-  const sorted = Object.entries(songCounts)
-    .sort(function(a, b) { return b[1] - a[1]; })
-    .slice(0, 8);
-
+  const sorted = Object.entries(songCounts).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 8);
   const container = document.getElementById('top-songs-chart');
-
   if (sorted.length === 0) {
     container.innerHTML = '<p style="color:#555;font-size:0.85rem">No top songs marked yet.</p>';
     return;
   }
-
   const max = sorted[0][1];
   container.innerHTML = sorted.map(function(entry) {
     const song = entry[0];
@@ -297,16 +328,13 @@ function renderTopSongs(data) {
 async function loadRankings() {
   const { data } = await db.from('ratings').select('*, albums(*)').order('rating', { ascending: false });
   const container = document.getElementById('rankings-list');
-
   if (!data || data.length === 0) {
     container.innerHTML = '<div class="empty-state">No ratings yet. Search for an album to get started!</div>';
     document.getElementById('top-songs-chart').innerHTML = '<p style="color:#555;font-size:0.85rem">No data yet.</p>';
     return;
   }
-
   renderBarChart(data);
   renderTopSongs(data);
-
   container.innerHTML = data.map(function(r, i) {
     const topSongs = r.top_songs && r.top_songs.length > 0 ?
       '<p style="color:#1DB954;font-size:0.75rem;margin-top:4px">★ ' + r.top_songs.slice(0,3).join(', ') + '</p>' : '';
@@ -342,4 +370,5 @@ window.addEventListener('load', async function() {
   document.getElementById('search-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') searchAlbums();
   });
+  loadRecentlyPlayed();
 });
