@@ -15,20 +15,75 @@ function initSupabase() {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// ---- Spotify Auth ----
-function getSpotifyToken() {
-  const hash = window.location.hash;
-  if (hash) {
-    const params = new URLSearchParams(hash.substring(1));
-    const token = params.get('access_token');
-    if (token) {
-      spotifyToken = token;
-      localStorage.setItem('spotify_token', token);
-      localStorage.setItem('spotify_token_time', Date.now());
-      window.location.hash = '';
-      return token;
+// ---- Spotify Auth (PKCE flow) ----
+function generateRandomString(length) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const array = new Uint8Array(length);
+  window.crypto.getRandomValues(array);
+  array.forEach(function(byte) { result += chars[byte % chars.length]; });
+  return result;
+}
+
+async function generateCodeChallenge(codeVerifier) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const digest = await window.crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function loginSpotify() {
+  const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
+  const scopes = encodeURIComponent('user-read-private');
+  const codeVerifier = generateRandomString(64);
+  localStorage.setItem('code_verifier', codeVerifier);
+
+  generateCodeChallenge(codeVerifier).then(function(codeChallenge) {
+    window.location.href = 'https://accounts.spotify.com/authorize?client_id=' + SPOTIFY_CLIENT_ID +
+      '&response_type=code' +
+      '&redirect_uri=' + redirectUri +
+      '&scope=' + scopes +
+      '&code_challenge_method=S256' +
+      '&code_challenge=' + codeChallenge;
+  });
+}
+
+async function handleSpotifyCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (!code) return false;
+
+  const codeVerifier = localStorage.getItem('code_verifier');
+  const redirectUri = window.location.origin + window.location.pathname;
+
+  const response = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: redirectUri,
+      client_id: SPOTIFY_CLIENT_ID,
+      code_verifier: codeVerifier
+    })
+  });
+
+  const tokenData = await response.json();
+  if (tokenData.access_token) {
+    spotifyToken = tokenData.access_token;
+    localStorage.setItem('spotify_token', tokenData.access_token);
+    localStorage.setItem('spotify_token_time', Date.now());
+    if (tokenData.refresh_token) {
+      localStorage.setItem('spotify_refresh_token', tokenData.refresh_token);
     }
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return true;
   }
+  return false;
+}
+
+function getSpotifyToken() {
   const saved = localStorage.getItem('spotify_token');
   const savedTime = localStorage.getItem('spotify_token_time');
   if (saved && savedTime && Date.now() - savedTime < 3600000) {
@@ -36,12 +91,6 @@ function getSpotifyToken() {
     return saved;
   }
   return null;
-}
-
-function loginSpotify() {
-  const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
-  const scopes = encodeURIComponent('user-read-private');
-  window.location.href = 'https://accounts.spotify.com/authorize?client_id=' + SPOTIFY_CLIENT_ID + '&response_type=token&redirect_uri=' + redirectUri + '&scope=' + scopes;
 }
 
 // ---- Pages ----
@@ -241,9 +290,14 @@ window.closeModal = closeModal;
 window.saveRating = saveRating;
 
 // ---- Init ----
-window.addEventListener('load', function() {
+window.addEventListener('load', async function() {
   initSupabase();
-  getSpotifyToken();
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('code')) {
+    await handleSpotifyCallback();
+  } else {
+    getSpotifyToken();
+  }
   document.getElementById('search-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') searchAlbums();
   });
