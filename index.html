@@ -15,6 +15,7 @@
       <nav>
         <button onclick="showPage('search')" class="nav-btn active" id="nav-search">Search</button>
         <button onclick="showPage('rankings')" class="nav-btn" id="nav-rankings">My Rankings</button>
+        <button onclick="showPage('replay')" class="nav-btn" id="nav-replay">Replay Tracker</button>
       </nav>
     </header>
 
@@ -25,33 +26,43 @@
         <button onclick="searchAlbums()">Search</button>
       </div>
       <div id="recent-section">
-  <h3 class="section-label">Recently Played</h3>
-  <div id="recent-results" class="album-grid"></div>
-</div>
-<div id="search-results-section" class="hidden">
-  <h3 class="section-label">Search Results</h3>
-  <div id="search-results" class="album-grid"></div>
-</div>
+        <h3 class="section-label">Recently Played</h3>
+        <div id="recent-results" class="album-grid"></div>
+      </div>
+      <div id="search-results-section" class="hidden">
+        <h3 class="section-label">Search Results</h3>
+        <div id="search-results" class="album-grid"></div>
+      </div>
     </div>
 
     <!-- Rankings Page -->
     <div id="page-rankings" class="page hidden">
       <h2>My Album Rankings</h2>
-
-      <!-- Charts -->
       <div class="charts-section">
         <div class="chart-card">
           <h3>Albums by Rating</h3>
           <canvas id="barChart"></canvas>
         </div>
         <div class="chart-card">
-          <h3>Most Marked Top Songs</h3>
-          <div id="top-songs-chart"></div>
+          <h3>Genre Breakdown</h3>
+          <canvas id="genreChart"></canvas>
         </div>
       </div>
-
-      <!-- Rankings List -->
       <div id="rankings-list"></div>
+    </div>
+
+    <!-- Replay Tracker Page -->
+    <div id="page-replay" class="page hidden">
+      <h2>Replay Tracker</h2>
+      <p class="section-sublabel">Every time you open the app, your recent Spotify plays are logged. This chart grows over time.</p>
+      <div class="chart-card" style="margin-bottom:24px">
+        <h3>Most Replayed Albums (All Time)</h3>
+        <canvas id="replayBarChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Play Timeline</h3>
+        <canvas id="replayLineChart"></canvas>
+      </div>
     </div>
 
     <!-- Modal -->
