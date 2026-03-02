@@ -4,16 +4,15 @@ const SUPABASE_URL = 'https://ybqombcywijvkkfedizc.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlicW9tYmN5d2lqdmtrZmVkaXpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTQ4MjksImV4cCI6MjA4Nzk5MDgyOX0.1ii1tJKgBy4Asubxb8Zgve5tLcCNFr6dUHK1qD19FVw';
 // =================================
 
-let supabaseClient = null;
+let db = null;
 let spotifyToken = null;
 let currentAlbum = null;
 let currentTracks = [];
 let selectedTracks = [];
 let existingRating = null;
 
-// Load Supabase from CDN then init
 function initSupabase() {
-  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
 // ---- Spotify Auth ----
@@ -42,13 +41,13 @@ function getSpotifyToken() {
 function loginSpotify() {
   const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
   const scopes = encodeURIComponent('user-read-private');
-  window.location.href = `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&response_type=token&redirect_uri=${redirectUri}&scope=${scopes}`;
+  window.location.href = 'https://accounts.spotify.com/authorize?client_id=' + SPOTIFY_CLIENT_ID + '&response_type=token&redirect_uri=' + redirectUri + '&scope=' + scopes;
 }
 
 // ---- Pages ----
 function showPage(page) {
-  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.add('hidden'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
   document.getElementById('page-' + page).classList.remove('hidden');
   document.getElementById('nav-' + page).classList.add('active');
   if (page === 'rankings') loadRankings();
@@ -68,19 +67,19 @@ async function searchAlbums() {
   const data = await res.json();
   const albums = data.albums.items;
 
-  const spotifyIds = albums.map(a => a.id);
-  const { data: ratedAlbums } = await supabase
+  const spotifyIds = albums.map(function(a) { return a.id; });
+  const { data: ratedAlbums } = await db
     .from('albums')
     .select('spotify_id, ratings(rating)')
     .in('spotify_id', spotifyIds);
 
   const ratedMap = {};
-  (ratedAlbums || []).forEach(a => {
+  (ratedAlbums || []).forEach(function(a) {
     if (a.ratings && a.ratings.length > 0) ratedMap[a.spotify_id] = a.ratings[0].rating;
   });
 
   const container = document.getElementById('search-results');
-  container.innerHTML = albums.map(album => {
+  container.innerHTML = albums.map(function(album) {
     const img = album.images && album.images[0] ? album.images[0].url : '';
     const artist = album.artists && album.artists[0] ? album.artists[0].name : '';
     const badge = ratedMap[album.id] !== undefined ? '<span class="rating-badge">' + ratedMap[album.id] + '/10</span>' : '';
@@ -106,7 +105,7 @@ async function openAlbum(spotifyId) {
   selectedTracks = [];
   existingRating = null;
 
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from('albums')
     .select('id, ratings(*)')
     .eq('spotify_id', spotifyId)
@@ -172,7 +171,7 @@ async function saveRating(spotifyId) {
     return;
   }
 
-  const { data: albumRow } = await supabase
+  const { data: albumRow } = await db
     .from('albums')
     .upsert({
       spotify_id: spotifyId,
@@ -185,14 +184,14 @@ async function saveRating(spotifyId) {
     .single();
 
   if (existingRating) {
-    await supabaseClient.from('ratings').update({
+    await db.from('ratings').update({
       rating: rating,
       comments: comments,
       top_songs: selectedTracks,
       updated_at: new Date().toISOString()
     }).eq('id', existingRating.id);
   } else {
-    await supabaseClient.from('ratings').insert({
+    await db.from('ratings').insert({
       album_id: albumRow.id,
       rating: rating,
       comments: comments,
@@ -207,7 +206,7 @@ async function saveRating(spotifyId) {
 
 // ---- Rankings ----
 async function loadRankings() {
-  const { data } = await supabase
+  const { data } = await db
     .from('ratings')
     .select('*, albums(*)')
     .order('rating', { ascending: false });
@@ -233,7 +232,7 @@ async function loadRankings() {
   }).join('');
 }
 
-// Expose functions to global scope
+// ---- Expose to global scope ----
 window.showPage = showPage;
 window.searchAlbums = searchAlbums;
 window.openAlbum = openAlbum;
