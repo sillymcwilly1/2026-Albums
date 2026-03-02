@@ -71,20 +71,90 @@ async function handleSpotifyCallback() {
   });
   const tokenData = await response.json();
   if (tokenData.access_token) {
-    spotifyToken = tokenData.access_token;
-    localStorage.setItem('spotify_token', tokenData.access_token);
-    localStorage.setItem('spotify_token_time', Date.now());
-    if (tokenData.refresh_token) localStorage.setItem('spotify_refresh_token', tokenData.refresh_token);
+    saveTokens(tokenData);
     window.history.replaceState({}, document.title, window.location.pathname);
     return true;
   }
   return false;
 }
 
+function saveTokens(tokenData) {
+  spotifyToken = tokenData.access_token;
+  localStorage.setItem('spotify_token', tokenData.access_token);
+  localStorage.setItem('spotify_token_time', Date.now());
+  if (tokenData.refresh_token) {
+    localStorage.setItem('spotify_refresh_token', tokenData.refresh_token);
+  }
+}
+
+async function refreshSpotifyToken() {
+  const refreshToken = localStorage.getItem('spotify_refresh_token');
+  if (!refreshToken) {
+    loginSpotify();
+    return false;
+  }
+  const response = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: SPOTIFY_CLIENT_ID
+    })
+  });
+  const tokenData = await response.json();
+  if (tokenData.access_token) {
+    saveTokens(tokenData);
+    return true;
+  }
+  // Refresh failed — need full login
+  loginSpotify();
+  return false;
+}
+
+async function getValidToken() {
+  const saved = localStorage.getItem('spotify_token');
+  const savedTime = localStorage.getItem('spotify_token_time');
+  const refreshToken = localStorage.getItem('spotify_refresh_token');
+
+  // If token is still fresh (more than 5 min remaining), use it
+  if (saved && savedTime && Date.now() - savedTime < 55 * 60 * 1000) {
+    spotifyToken = saved;
+    return saved;
+  }
+
+  // Token expired or nearly expired — try to refresh
+  if (refreshToken) {
+    const success = await refreshSpotifyToken();
+    if (success) return spotifyToken;
+  }
+
+  // No refresh token — need to log in
+  return null;
+}
+
+// Wrapper for all Spotify API calls — auto-refreshes on 401
+async function spotifyFetch(url) {
+  let token = await getValidToken();
+  if (!token) { loginSpotify(); return null; }
+
+  let res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+
+  // If 401, try refreshing once and retry
+  if (res.status === 401) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) return null;
+    res = await fetch(url, { headers: { Authorization: 'Bearer ' + spotifyToken } });
+  }
+
+  if (!res.ok) return null;
+  return res.json();
+}
+
 function getSpotifyToken() {
   const saved = localStorage.getItem('spotify_token');
   const savedTime = localStorage.getItem('spotify_token_time');
-  if (saved && savedTime && Date.now() - savedTime < 3600000) {
+  if (saved && savedTime && Date.now() - savedTime < 55 * 60 * 1000) {
     spotifyToken = saved;
     return saved;
   }
@@ -103,14 +173,12 @@ function showPage(page) {
 
 // ---- Recently Played + Play Logger ----
 async function loadRecentlyPlayed() {
-  if (!spotifyToken) return;
-  const res = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50', {
-    headers: { Authorization: 'Bearer ' + spotifyToken }
-  });
-  if (!res.ok) return;
-  const data = await res.json();
+  const token = await getValidToken();
+  if (!token) return;
 
-  // Deduplicate albums for display
+  const data = await spotifyFetch('https://api.spotify.com/v1/me/player/recently-played?limit=50');
+  if (!data || !data.items) return;
+
   const seenIds = new Set();
   const albums = [];
   data.items.forEach(function(item) {
@@ -121,10 +189,8 @@ async function loadRecentlyPlayed() {
     }
   });
 
-  // Log plays to database (deduplicated by album+hour so opening app multiple times doesn't spam)
   await logPlays(data.items);
 
-  // Show rated badges
   const spotifyIds = albums.map(function(a) { return a.id; });
   const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
   const ratedMap = {};
@@ -145,19 +211,16 @@ async function loadRecentlyPlayed() {
 }
 
 async function logPlays(items) {
-  // Get the current hour as a string to deduplicate within the same hour
   const now = new Date();
   const hourKey = now.getFullYear() + '-' +
     String(now.getMonth()+1).padStart(2,'0') + '-' +
     String(now.getDate()).padStart(2,'0') + 'T' +
     String(now.getHours()).padStart(2,'0');
 
-  // Check what we've already logged this hour
   const lastLogged = localStorage.getItem('last_log_hour');
-  if (lastLogged === hourKey) return; // Already logged this hour, skip
+  if (lastLogged === hourKey) return;
   localStorage.setItem('last_log_hour', hourKey);
 
-  // Build unique albums from the 50 recent tracks
   const seenIds = new Set();
   const toLog = [];
   items.forEach(function(item) {
@@ -187,7 +250,7 @@ async function loadReplayTracker() {
     .order('logged_at', { ascending: true });
 
   if (!logs || logs.length === 0) {
-    document.getElementById('replayBarChart').parentElement.innerHTML +=
+    document.getElementById('replayBarChart').closest('.chart-card').innerHTML +=
       '<p style="color:#555;font-size:0.85rem;margin-top:8px">No play data yet — open the app a few times to start building your history!</p>';
     return;
   }
@@ -198,10 +261,8 @@ async function loadReplayTracker() {
 
 function renderReplayBar(logs) {
   const counts = {};
-  const images = {};
   logs.forEach(function(log) {
     counts[log.album_name] = (counts[log.album_name] || 0) + 1;
-    images[log.album_name] = log.image_url;
   });
 
   const sorted = Object.entries(counts)
@@ -246,7 +307,6 @@ function renderReplayBar(logs) {
 }
 
 function renderReplayLine(logs) {
-  // Group by date and album
   const byDate = {};
   logs.forEach(function(log) {
     const date = log.logged_at.substring(0, 10);
@@ -256,7 +316,6 @@ function renderReplayLine(logs) {
 
   const dates = Object.keys(byDate).sort();
 
-  // Find top 5 most played albums overall
   const totalCounts = {};
   logs.forEach(function(log) {
     totalCounts[log.album_name] = (totalCounts[log.album_name] || 0) + 1;
@@ -288,9 +347,7 @@ function renderReplayLine(logs) {
     options: {
       responsive: true,
       plugins: {
-        legend: {
-          labels: { color: '#aaa', font: { size: 11 } }
-        }
+        legend: { labels: { color: '#aaa', font: { size: 11 } } }
       },
       scales: {
         x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: '#222' } },
@@ -302,18 +359,21 @@ function renderReplayLine(logs) {
 
 // ---- Search ----
 async function searchAlbums() {
-  if (!spotifyToken) { loginSpotify(); return; }
+  const token = await getValidToken();
+  if (!token) { loginSpotify(); return; }
+
   const query = document.getElementById('search-input').value.trim();
   if (!query) return;
 
   document.getElementById('recent-section').classList.add('hidden');
   document.getElementById('search-results-section').classList.remove('hidden');
 
-  const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=20', {
-    headers: { Authorization: 'Bearer ' + spotifyToken }
-  });
-  if (res.status === 401) { loginSpotify(); return; }
-  const data = await res.json();
+  const data = await spotifyFetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=20');
+  if (!data || !data.albums || !data.albums.items) {
+    alert('Search failed — please try again.');
+    return;
+  }
+
   const albums = data.albums.items;
   const spotifyIds = albums.map(function(a) { return a.id; });
   const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
@@ -321,6 +381,7 @@ async function searchAlbums() {
   (ratedAlbums || []).forEach(function(a) {
     if (a.ratings && a.ratings.length > 0) ratedMap[a.spotify_id] = a.ratings[0].rating;
   });
+
   const container = document.getElementById('search-results');
   container.innerHTML = albums.map(function(album) {
     const img = album.images && album.images[0] ? album.images[0].url : '';
@@ -334,30 +395,27 @@ async function searchAlbums() {
 
 // ---- Fetch Artist Genres ----
 async function fetchArtistGenres(artistId) {
-  if (!spotifyToken) return [];
-  const res = await fetch('https://api.spotify.com/v1/artists/' + artistId, {
-    headers: { Authorization: 'Bearer ' + spotifyToken }
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.genres || [];
+  const data = await spotifyFetch('https://api.spotify.com/v1/artists/' + artistId);
+  return (data && data.genres) ? data.genres : [];
 }
 
 // ---- Open Album Modal ----
 async function openAlbum(spotifyId) {
-  if (!spotifyToken) { loginSpotify(); return; }
-  const [albumRes, tracksRes] = await Promise.all([
-    fetch('https://api.spotify.com/v1/albums/' + spotifyId, { headers: { Authorization: 'Bearer ' + spotifyToken } }),
-    fetch('https://api.spotify.com/v1/albums/' + spotifyId + '/tracks?limit=50', { headers: { Authorization: 'Bearer ' + spotifyToken } })
+  const token = await getValidToken();
+  if (!token) { loginSpotify(); return; }
+
+  const [album, tracksData] = await Promise.all([
+    spotifyFetch('https://api.spotify.com/v1/albums/' + spotifyId),
+    spotifyFetch('https://api.spotify.com/v1/albums/' + spotifyId + '/tracks?limit=50')
   ]);
-  const album = await albumRes.json();
-  const tracksData = await tracksRes.json();
+
+  if (!album || !tracksData) return;
+
   currentAlbum = album;
   currentTracks = tracksData.items;
   selectedTracks = [];
   existingRating = null;
 
-  // Fetch genres from first artist
   const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
   const genres = artistId ? await fetchArtistGenres(artistId) : [];
 
@@ -379,7 +437,6 @@ async function openAlbum(spotifyId) {
       '<span>' + (i+1) + '. ' + t.name + '</span></div>';
   }).join('');
 
-  // Genre tags HTML
   let genreHTML = '';
   if (genres.length > 0) {
     const tagClasses = ['', 'secondary', 'tertiary'];
@@ -489,37 +546,25 @@ function renderBarChart(data) {
 }
 
 async function renderGenreChart(data) {
-  // Collect all artist IDs from rated albums
   const genreCounts = {};
-
   await Promise.all(data.map(async function(r) {
-    const artistRes = await fetch('https://api.spotify.com/v1/artists/' + r.albums.spotify_id, {
-      headers: { Authorization: 'Bearer ' + spotifyToken }
-    });
-    // We need the album's artist id — fetch from albums table isn't enough, use search
-    // Instead fetch the album to get artist id
-    const albumRes = await fetch('https://api.spotify.com/v1/albums/' + r.albums.spotify_id, {
-      headers: { Authorization: 'Bearer ' + spotifyToken }
-    });
-    if (!albumRes.ok) return;
-    const album = await albumRes.json();
-    const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
-    if (!artistId) return;
-    const aRes = await fetch('https://api.spotify.com/v1/artists/' + artistId, {
-      headers: { Authorization: 'Bearer ' + spotifyToken }
-    });
-    if (!aRes.ok) return;
-    const artist = await aRes.json();
-    (artist.genres || []).forEach(function(g) {
-      genreCounts[g] = (genreCounts[g] || 0) + 1;
-    });
+    try {
+      const album = await spotifyFetch('https://api.spotify.com/v1/albums/' + r.albums.spotify_id);
+      if (!album) return;
+      const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
+      if (!artistId) return;
+      const artist = await spotifyFetch('https://api.spotify.com/v1/artists/' + artistId);
+      if (!artist) return;
+      (artist.genres || []).forEach(function(g) {
+        genreCounts[g] = (genreCounts[g] || 0) + 1;
+      });
+    } catch(e) {}
   }));
 
   const sorted = Object.entries(genreCounts).sort(function(a,b){ return b[1]-a[1]; }).slice(0,8);
   if (sorted.length === 0) return;
 
   const palette = ['#1DB954','#6c63ff','#ff6363','#ffb347','#00bcd4','#ff69b4','#a8e063','#f7971e'];
-
   if (genreChartInstance) genreChartInstance.destroy();
   const ctx = document.getElementById('genreChart').getContext('2d');
   genreChartInstance = new Chart(ctx, {
@@ -582,7 +627,7 @@ window.addEventListener('load', async function() {
   if (params.get('code')) {
     await handleSpotifyCallback();
   } else {
-    getSpotifyToken();
+    await getValidToken();
   }
   document.getElementById('search-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') searchAlbums();
