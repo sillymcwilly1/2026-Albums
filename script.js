@@ -4,7 +4,7 @@ const SUPABASE_URL = 'https://ybqombcywijvkkfedizc.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlicW9tYmN5d2lqdmtrZmVkaXpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTQ4MjksImV4cCI6MjA4Nzk5MDgyOX0.1ii1tJKgBy4Asubxb8Zgve5tLcCNFr6dUHK1qD19FVw';
 // =================================
 
-let supabase = null;
+let supabaseClient = null;
 let spotifyToken = null;
 let currentAlbum = null;
 let currentTracks = [];
@@ -13,7 +13,7 @@ let existingRating = null;
 
 // Load Supabase from CDN then init
 function initSupabase() {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
 // ---- Spotify Auth ----
@@ -185,14 +185,14 @@ async function saveRating(spotifyId) {
     .single();
 
   if (existingRating) {
-    await supabase.from('ratings').update({
+    await supabaseClient.from('ratings').update({
       rating: rating,
       comments: comments,
       top_songs: selectedTracks,
       updated_at: new Date().toISOString()
     }).eq('id', existingRating.id);
   } else {
-    await supabase.from('ratings').insert({
+    await supabaseClient.from('ratings').insert({
       album_id: albumRow.id,
       rating: rating,
       comments: comments,
