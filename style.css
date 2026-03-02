@@ -220,3 +220,13 @@ textarea { min-height: 80px; resize: vertical; font-family: inherit; }
   height: 8px;
   transition: width 0.4s ease;
 }
+.section-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #555;
+  margin-bottom: 12px;
+  margin-top: 8px;
+}
+
+#recent-section { margin-bottom: 28px; }
