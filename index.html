@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Album Rater</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>🎵 Album Rater</h1>
+      <nav>
+        <button onclick="showPage('search')" class="nav-btn active" id="nav-search">Search</button>
+        <button onclick="showPage('rankings')" class="nav-btn" id="nav-rankings">My Rankings</button>
+      </nav>
+    </header>
+
+    <!-- Search Page -->
+    <div id="page-search" class="page">
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search for an album..." />
+        <button onclick="searchAlbums()">Search</button>
+      </div>
+      <div id="search-results" class="album-grid"></div>
+    </div>
+
+    <!-- Rankings Page -->
+    <div id="page-rankings" class="page hidden">
+      <h2>My Album Rankings</h2>
+      <div id="rankings-list"></div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-content">
+        <button class="close-btn" onclick="closeModal()">✕</button>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
