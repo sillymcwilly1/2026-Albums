@@ -347,7 +347,7 @@ async function searchAlbums() {
   document.getElementById('recent-section').classList.add('hidden');
   document.getElementById('search-results-section').classList.remove('hidden');
 
-  const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=20', {
+  const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=10', {
     headers: { Authorization: 'Bearer ' + token }
   });
 
