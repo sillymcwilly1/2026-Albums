@@ -11,6 +11,9 @@ let currentTracks = [];
 let selectedTracks = [];
 let existingRating = null;
 let barChartInstance = null;
+let genreChartInstance = null;
+let replayBarInstance = null;
+let replayLineInstance = null;
 
 function initSupabase() {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -95,9 +98,10 @@ function showPage(page) {
   document.getElementById('page-' + page).classList.remove('hidden');
   document.getElementById('nav-' + page).classList.add('active');
   if (page === 'rankings') loadRankings();
+  if (page === 'replay') loadReplayTracker();
 }
 
-// ---- Recently Played ----
+// ---- Recently Played + Play Logger ----
 async function loadRecentlyPlayed() {
   if (!spotifyToken) return;
   const res = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50', {
@@ -106,6 +110,7 @@ async function loadRecentlyPlayed() {
   if (!res.ok) return;
   const data = await res.json();
 
+  // Deduplicate albums for display
   const seenIds = new Set();
   const albums = [];
   data.items.forEach(function(item) {
@@ -116,6 +121,10 @@ async function loadRecentlyPlayed() {
     }
   });
 
+  // Log plays to database (deduplicated by album+hour so opening app multiple times doesn't spam)
+  await logPlays(data.items);
+
+  // Show rated badges
   const spotifyIds = albums.map(function(a) { return a.id; });
   const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
   const ratedMap = {};
@@ -133,6 +142,162 @@ async function loadRecentlyPlayed() {
       '<img src="' + img + '" alt="' + album.name + '" />' +
       '<div class="album-card-info"><h3>' + album.name + '</h3><p>' + artist + '</p>' + badge + '</div></div>';
   }).join('');
+}
+
+async function logPlays(items) {
+  // Get the current hour as a string to deduplicate within the same hour
+  const now = new Date();
+  const hourKey = now.getFullYear() + '-' +
+    String(now.getMonth()+1).padStart(2,'0') + '-' +
+    String(now.getDate()).padStart(2,'0') + 'T' +
+    String(now.getHours()).padStart(2,'0');
+
+  // Check what we've already logged this hour
+  const lastLogged = localStorage.getItem('last_log_hour');
+  if (lastLogged === hourKey) return; // Already logged this hour, skip
+  localStorage.setItem('last_log_hour', hourKey);
+
+  // Build unique albums from the 50 recent tracks
+  const seenIds = new Set();
+  const toLog = [];
+  items.forEach(function(item) {
+    const album = item.track.album;
+    if (!seenIds.has(album.id)) {
+      seenIds.add(album.id);
+      toLog.push({
+        spotify_album_id: album.id,
+        album_name: album.name,
+        artist: album.artists && album.artists[0] ? album.artists[0].name : '',
+        image_url: album.images && album.images[0] ? album.images[0].url : '',
+        logged_at: new Date().toISOString()
+      });
+    }
+  });
+
+  if (toLog.length > 0) {
+    await db.from('play_logs').insert(toLog);
+  }
+}
+
+// ---- Replay Tracker Page ----
+async function loadReplayTracker() {
+  const { data: logs } = await db
+    .from('play_logs')
+    .select('*')
+    .order('logged_at', { ascending: true });
+
+  if (!logs || logs.length === 0) {
+    document.getElementById('replayBarChart').parentElement.innerHTML +=
+      '<p style="color:#555;font-size:0.85rem;margin-top:8px">No play data yet — open the app a few times to start building your history!</p>';
+    return;
+  }
+
+  renderReplayBar(logs);
+  renderReplayLine(logs);
+}
+
+function renderReplayBar(logs) {
+  const counts = {};
+  const images = {};
+  logs.forEach(function(log) {
+    counts[log.album_name] = (counts[log.album_name] || 0) + 1;
+    images[log.album_name] = log.image_url;
+  });
+
+  const sorted = Object.entries(counts)
+    .sort(function(a, b) { return b[1] - a[1]; })
+    .slice(0, 12);
+
+  const labels = sorted.map(function(e) {
+    return e[0].length > 15 ? e[0].substring(0,15) + '…' : e[0];
+  });
+  const values = sorted.map(function(e) { return e[1]; });
+
+  if (replayBarInstance) replayBarInstance.destroy();
+  const ctx = document.getElementById('replayBarChart').getContext('2d');
+  replayBarInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Times Logged',
+        data: values,
+        backgroundColor: '#1DB954',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function(items) { return sorted[items[0].dataIndex][0]; },
+            label: function(item) { return item.raw + ' session' + (item.raw !== 1 ? 's' : ''); }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: '#222' } },
+        y: { ticks: { color: '#aaa', stepSize: 1 }, grid: { color: '#222' } }
+      }
+    }
+  });
+}
+
+function renderReplayLine(logs) {
+  // Group by date and album
+  const byDate = {};
+  logs.forEach(function(log) {
+    const date = log.logged_at.substring(0, 10);
+    if (!byDate[date]) byDate[date] = {};
+    byDate[date][log.album_name] = (byDate[date][log.album_name] || 0) + 1;
+  });
+
+  const dates = Object.keys(byDate).sort();
+
+  // Find top 5 most played albums overall
+  const totalCounts = {};
+  logs.forEach(function(log) {
+    totalCounts[log.album_name] = (totalCounts[log.album_name] || 0) + 1;
+  });
+  const top5 = Object.entries(totalCounts)
+    .sort(function(a, b) { return b[1] - a[1]; })
+    .slice(0, 5)
+    .map(function(e) { return e[0]; });
+
+  const colors = ['#1DB954', '#6c63ff', '#ff6363', '#ffb347', '#00bcd4'];
+
+  const datasets = top5.map(function(album, i) {
+    return {
+      label: album.length > 20 ? album.substring(0,20) + '…' : album,
+      data: dates.map(function(date) { return (byDate[date] && byDate[date][album]) || 0; }),
+      borderColor: colors[i],
+      backgroundColor: colors[i] + '33',
+      tension: 0.3,
+      fill: false,
+      pointRadius: 4
+    };
+  });
+
+  if (replayLineInstance) replayLineInstance.destroy();
+  const ctx = document.getElementById('replayLineChart').getContext('2d');
+  replayLineInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels: dates, datasets: datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: { color: '#aaa', font: { size: 11 } }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: '#222' } },
+        y: { ticks: { color: '#aaa', stepSize: 1 }, grid: { color: '#222' } }
+      }
+    }
+  });
 }
 
 // ---- Search ----
@@ -167,6 +332,17 @@ async function searchAlbums() {
   }).join('');
 }
 
+// ---- Fetch Artist Genres ----
+async function fetchArtistGenres(artistId) {
+  if (!spotifyToken) return [];
+  const res = await fetch('https://api.spotify.com/v1/artists/' + artistId, {
+    headers: { Authorization: 'Bearer ' + spotifyToken }
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.genres || [];
+}
+
 // ---- Open Album Modal ----
 async function openAlbum(spotifyId) {
   if (!spotifyToken) { loginSpotify(); return; }
@@ -180,6 +356,11 @@ async function openAlbum(spotifyId) {
   currentTracks = tracksData.items;
   selectedTracks = [];
   existingRating = null;
+
+  // Fetch genres from first artist
+  const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
+  const genres = artistId ? await fetchArtistGenres(artistId) : [];
+
   const { data: existing } = await db.from('albums').select('id, ratings(*)').eq('spotify_id', spotifyId).single();
   let ratingVal = '';
   let commentVal = '';
@@ -189,6 +370,7 @@ async function openAlbum(spotifyId) {
     commentVal = existingRating.comments || '';
     selectedTracks = existingRating.top_songs || [];
   }
+
   const tracksHTML = currentTracks.map(function(t, i) {
     const isSelected = selectedTracks.includes(t.name);
     const safeName = t.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -196,12 +378,25 @@ async function openAlbum(spotifyId) {
       '<span class="track-check">' + (isSelected ? '★' : '☆') + '</span>' +
       '<span>' + (i+1) + '. ' + t.name + '</span></div>';
   }).join('');
+
+  // Genre tags HTML
+  let genreHTML = '';
+  if (genres.length > 0) {
+    const tagClasses = ['', 'secondary', 'tertiary'];
+    genreHTML = '<div class="genre-section"><label>Genres</label><div class="genre-tags">' +
+      genres.slice(0, 6).map(function(g, i) {
+        return '<span class="genre-tag ' + (tagClasses[i % 3]) + '">' + g + '</span>';
+      }).join('') +
+      '</div></div>';
+  }
+
   document.getElementById('modal-body').innerHTML =
     '<div class="modal-album-header">' +
     '<img src="' + (album.images && album.images[0] ? album.images[0].url : '') + '" alt="' + album.name + '" />' +
     '<div><h2>' + album.name + '</h2>' +
     '<p>' + (album.artists && album.artists[0] ? album.artists[0].name : '') + '</p>' +
     '<p style="font-size:0.8rem;color:#666">' + (album.release_date ? album.release_date.split('-')[0] : '') + '</p></div></div>' +
+    genreHTML +
     '<label>Rating (0–10)</label>' +
     '<input type="number" id="rating-input" min="0" max="10" step="0.1" value="' + ratingVal + '" placeholder="e.g. 8.5" />' +
     '<label>Comments</label>' +
@@ -209,6 +404,7 @@ async function openAlbum(spotifyId) {
     '<label>Top Songs (tap to mark)</label>' +
     '<div class="tracks-list">' + tracksHTML + '</div>' +
     '<button class="save-btn" onclick="saveRating(\'' + spotifyId + '\')">💾 Save Rating</button>';
+
   document.getElementById('modal').classList.remove('hidden');
 }
 
@@ -255,12 +451,11 @@ async function saveRating(spotifyId) {
   searchAlbums();
 }
 
-// ---- Charts ----
+// ---- Rankings Charts ----
 function renderBarChart(data) {
   const sorted = [...data].sort(function(a, b) { return b.rating - a.rating; });
   const labels = sorted.map(function(r) {
-    const name = r.albums.name;
-    return name.length > 15 ? name.substring(0, 15) + '…' : name;
+    return r.albums.name.length > 15 ? r.albums.name.substring(0,15) + '…' : r.albums.name;
   });
   const values = sorted.map(function(r) { return r.rating; });
   const colors = values.map(function(v) {
@@ -273,10 +468,7 @@ function renderBarChart(data) {
   const ctx = document.getElementById('barChart').getContext('2d');
   barChartInstance = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }]
-    },
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }] },
     options: {
       responsive: true,
       plugins: {
@@ -296,32 +488,58 @@ function renderBarChart(data) {
   });
 }
 
-function renderTopSongs(data) {
-  const songCounts = {};
-  data.forEach(function(r) {
-    if (r.top_songs && r.top_songs.length > 0) {
-      r.top_songs.forEach(function(song) {
-        songCounts[song] = (songCounts[song] || 0) + 1;
-      });
+async function renderGenreChart(data) {
+  // Collect all artist IDs from rated albums
+  const genreCounts = {};
+
+  await Promise.all(data.map(async function(r) {
+    const artistRes = await fetch('https://api.spotify.com/v1/artists/' + r.albums.spotify_id, {
+      headers: { Authorization: 'Bearer ' + spotifyToken }
+    });
+    // We need the album's artist id — fetch from albums table isn't enough, use search
+    // Instead fetch the album to get artist id
+    const albumRes = await fetch('https://api.spotify.com/v1/albums/' + r.albums.spotify_id, {
+      headers: { Authorization: 'Bearer ' + spotifyToken }
+    });
+    if (!albumRes.ok) return;
+    const album = await albumRes.json();
+    const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
+    if (!artistId) return;
+    const aRes = await fetch('https://api.spotify.com/v1/artists/' + artistId, {
+      headers: { Authorization: 'Bearer ' + spotifyToken }
+    });
+    if (!aRes.ok) return;
+    const artist = await aRes.json();
+    (artist.genres || []).forEach(function(g) {
+      genreCounts[g] = (genreCounts[g] || 0) + 1;
+    });
+  }));
+
+  const sorted = Object.entries(genreCounts).sort(function(a,b){ return b[1]-a[1]; }).slice(0,8);
+  if (sorted.length === 0) return;
+
+  const palette = ['#1DB954','#6c63ff','#ff6363','#ffb347','#00bcd4','#ff69b4','#a8e063','#f7971e'];
+
+  if (genreChartInstance) genreChartInstance.destroy();
+  const ctx = document.getElementById('genreChart').getContext('2d');
+  genreChartInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: sorted.map(function(e){ return e[0]; }),
+      datasets: [{
+        data: sorted.map(function(e){ return e[1]; }),
+        backgroundColor: palette,
+        borderColor: '#0a0a0a',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#aaa', font: { size: 10 }, boxWidth: 12 } }
+      }
     }
   });
-  const sorted = Object.entries(songCounts).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 8);
-  const container = document.getElementById('top-songs-chart');
-  if (sorted.length === 0) {
-    container.innerHTML = '<p style="color:#555;font-size:0.85rem">No top songs marked yet.</p>';
-    return;
-  }
-  const max = sorted[0][1];
-  container.innerHTML = sorted.map(function(entry) {
-    const song = entry[0];
-    const count = entry[1];
-    const pct = Math.round((count / max) * 100);
-    const displayName = song.length > 22 ? song.substring(0, 22) + '…' : song;
-    return '<div class="top-song-row">' +
-      '<div class="top-song-label"><span>' + displayName + '</span><span>★ ' + count + '</span></div>' +
-      '<div class="top-song-bar-bg"><div class="top-song-bar-fill" style="width:' + pct + '%"></div></div>' +
-      '</div>';
-  }).join('');
 }
 
 // ---- Rankings ----
@@ -330,11 +548,10 @@ async function loadRankings() {
   const container = document.getElementById('rankings-list');
   if (!data || data.length === 0) {
     container.innerHTML = '<div class="empty-state">No ratings yet. Search for an album to get started!</div>';
-    document.getElementById('top-songs-chart').innerHTML = '<p style="color:#555;font-size:0.85rem">No data yet.</p>';
     return;
   }
   renderBarChart(data);
-  renderTopSongs(data);
+  renderGenreChart(data);
   container.innerHTML = data.map(function(r, i) {
     const topSongs = r.top_songs && r.top_songs.length > 0 ?
       '<p style="color:#1DB954;font-size:0.75rem;margin-top:4px">★ ' + r.top_songs.slice(0,3).join(', ') + '</p>' : '';
