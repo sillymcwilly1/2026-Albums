@@ -36,7 +36,7 @@ async function generateCodeChallenge(codeVerifier) {
 
 function loginSpotify() {
   const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
-  const scopes = encodeURIComponent('user-read-private');
+  const scopes = encodeURIComponent('user-read-private user-read-recently-played');
   const codeVerifier = generateRandomString(64);
   localStorage.setItem('code_verifier', codeVerifier);
   generateCodeChallenge(codeVerifier).then(function(codeChallenge) {
