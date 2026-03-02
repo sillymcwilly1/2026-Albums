@@ -557,22 +557,31 @@ function renderBarChart(data) {
 
 async function renderGenreChart(data) {
   const genreCounts = {};
-  await Promise.all(data.map(async function(r) {
+  
+  for (const r of data) {
     try {
       const album = await spotifyFetch('https://api.spotify.com/v1/albums/' + r.albums.spotify_id);
-      if (!album) return;
+      if (!album) continue;
       const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
-      if (!artistId) return;
+      if (!artistId) continue;
       const artist = await spotifyFetch('https://api.spotify.com/v1/artists/' + artistId);
-      if (!artist) return;
-      (artist.genres || []).forEach(function(g) {
+      if (!artist || !artist.genres) continue;
+      artist.genres.forEach(function(g) {
         genreCounts[g] = (genreCounts[g] || 0) + 1;
       });
-    } catch(e) {}
-  }));
+    } catch(e) {
+      console.log('Genre fetch error:', e);
+    }
+  }
+
+  console.log('Genre counts:', genreCounts);
 
   const sorted = Object.entries(genreCounts).sort(function(a,b){ return b[1]-a[1]; }).slice(0,8);
-  if (sorted.length === 0) return;
+  if (sorted.length === 0) {
+    document.getElementById('genreChart').closest('.chart-card').innerHTML += 
+      '<p style="color:#555;font-size:0.85rem;margin-top:8px">No genre data found.</p>';
+    return;
+  }
 
   const palette = ['#1DB954','#6c63ff','#ff6363','#ffb347','#00bcd4','#ff69b4','#a8e063','#f7971e'];
   if (genreChartInstance) genreChartInstance.destroy();
