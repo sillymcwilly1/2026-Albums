@@ -89,10 +89,7 @@ function saveTokens(tokenData) {
 
 async function refreshSpotifyToken() {
   const refreshToken = localStorage.getItem('spotify_refresh_token');
-  if (!refreshToken) {
-    loginSpotify();
-    return false;
-  }
+  if (!refreshToken) { loginSpotify(); return false; }
   const response = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -107,58 +104,39 @@ async function refreshSpotifyToken() {
     saveTokens(tokenData);
     return true;
   }
-  // Refresh failed — need full login
   loginSpotify();
   return false;
 }
 
-async function getValidToken() {
-  const saved = localStorage.getItem('spotify_token');
-  const savedTime = localStorage.getItem('spotify_token_time');
-  const refreshToken = localStorage.getItem('spotify_refresh_token');
-
-  // If token is still fresh (more than 5 min remaining), use it
-  if (saved && savedTime && Date.now() - savedTime < 55 * 60 * 1000) {
-    spotifyToken = saved;
-    return saved;
-  }
-
-  // Token expired or nearly expired — try to refresh
-  if (refreshToken) {
-    const success = await refreshSpotifyToken();
-    if (success) return spotifyToken;
-  }
-
-  // No refresh token — need to log in
-  return null;
-}
-
-// Wrapper for all Spotify API calls — auto-refreshes on 401
+// Always pulls freshest token, refreshes if needed
 async function spotifyFetch(url) {
-  let token = await getValidToken();
+  let token = localStorage.getItem('spotify_token');
+  const savedTime = localStorage.getItem('spotify_token_time');
+  const needsRefresh = !token || !savedTime || Date.now() - savedTime >= 55 * 60 * 1000;
+
+  if (needsRefresh) {
+    const refreshed = await refreshSpotifyToken();
+    if (!refreshed) { loginSpotify(); return null; }
+    token = localStorage.getItem('spotify_token');
+  }
+
   if (!token) { loginSpotify(); return null; }
+  spotifyToken = token;
 
   let res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
 
-  // If 401, try refreshing once and retry
   if (res.status === 401) {
     const refreshed = await refreshSpotifyToken();
-    if (!refreshed) return null;
-    res = await fetch(url, { headers: { Authorization: 'Bearer ' + spotifyToken } });
+    if (!refreshed) { loginSpotify(); return null; }
+    token = localStorage.getItem('spotify_token');
+    res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
   }
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.error('spotifyFetch failed:', res.status, url);
+    return null;
+  }
   return res.json();
-}
-
-function getSpotifyToken() {
-  const saved = localStorage.getItem('spotify_token');
-  const savedTime = localStorage.getItem('spotify_token_time');
-  if (saved && savedTime && Date.now() - savedTime < 55 * 60 * 1000) {
-    spotifyToken = saved;
-    return saved;
-  }
-  return null;
 }
 
 // ---- Pages ----
@@ -173,7 +151,7 @@ function showPage(page) {
 
 // ---- Recently Played + Play Logger ----
 async function loadRecentlyPlayed() {
-  const token = await getValidToken();
+  const token = localStorage.getItem('spotify_token');
   if (!token) return;
 
   const data = await spotifyFetch('https://api.spotify.com/v1/me/player/recently-played?limit=50');
@@ -403,16 +381,11 @@ async function searchAlbums() {
   }).join('');
 }
 
-// ---- Fetch Artist Genres ----
-async function fetchArtistGenres(artistId) {
-  const data = await spotifyFetch('https://api.spotify.com/v1/artists/' + artistId);
-  return (data && data.genres) ? data.genres : [];
-}
-
 // ---- Open Album Modal ----
 async function openAlbum(spotifyId) {
-  const token = await getValidToken();
+  const token = localStorage.getItem('spotify_token');
   if (!token) { loginSpotify(); return; }
+  spotifyToken = token;
 
   const [album, tracksData] = await Promise.all([
     spotifyFetch('https://api.spotify.com/v1/albums/' + spotifyId),
@@ -427,7 +400,7 @@ async function openAlbum(spotifyId) {
   existingRating = null;
 
   const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
-  const genres = artistId ? await fetchArtistGenres(artistId) : [];
+  const genres = artistId ? await spotifyFetch('https://api.spotify.com/v1/artists/' + artistId).then(function(a) { return a ? a.genres || [] : []; }) : [];
 
   const { data: existing } = await db.from('albums').select('id, ratings(*)').eq('spotify_id', spotifyId).single();
   let ratingVal = '';
@@ -557,7 +530,7 @@ function renderBarChart(data) {
 
 async function renderGenreChart(data) {
   const genreCounts = {};
-  
+
   for (const r of data) {
     try {
       const album = await spotifyFetch('https://api.spotify.com/v1/albums/' + r.albums.spotify_id);
@@ -578,7 +551,7 @@ async function renderGenreChart(data) {
 
   const sorted = Object.entries(genreCounts).sort(function(a,b){ return b[1]-a[1]; }).slice(0,8);
   if (sorted.length === 0) {
-    document.getElementById('genreChart').closest('.chart-card').innerHTML += 
+    document.getElementById('genreChart').closest('.chart-card').innerHTML +=
       '<p style="color:#555;font-size:0.85rem;margin-top:8px">No genre data found.</p>';
     return;
   }
@@ -646,7 +619,8 @@ window.addEventListener('load', async function() {
   if (params.get('code')) {
     await handleSpotifyCallback();
   } else {
-    await getValidToken();
+    const token = localStorage.getItem('spotify_token');
+    if (token) spotifyToken = token;
   }
   document.getElementById('search-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') searchAlbums();
