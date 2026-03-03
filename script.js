@@ -111,25 +111,20 @@ async function spotifyFetch(url) {
   let token = localStorage.getItem('spotify_token');
   const savedTime = localStorage.getItem('spotify_token_time');
   const needsRefresh = !token || !savedTime || Date.now() - savedTime >= 55 * 60 * 1000;
-
   if (needsRefresh) {
     const refreshed = await refreshSpotifyToken();
     if (!refreshed) return null;
     token = localStorage.getItem('spotify_token');
   }
-
   if (!token) return null;
   spotifyToken = token;
-
   let res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
-
   if (res.status === 401) {
     const refreshed = await refreshSpotifyToken();
     if (!refreshed) return null;
     token = localStorage.getItem('spotify_token');
     res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
   }
-
   if (!res.ok) return null;
   return res.json();
 }
@@ -152,6 +147,10 @@ async function loadRecentlyPlayed() {
   const data = await spotifyFetch('https://api.spotify.com/v1/me/player/recently-played?limit=50');
   if (!data || !data.items) return;
 
+  // Log plays with duration
+  await logPlays(data.items);
+
+  // Deduplicate albums for display
   const seenIds = new Set();
   const albums = [];
   data.items.forEach(function(item) {
@@ -161,8 +160,6 @@ async function loadRecentlyPlayed() {
       albums.push(album);
     }
   });
-
-  await logPlays(data.items);
 
   const spotifyIds = albums.map(function(a) { return a.id; });
   const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
@@ -193,96 +190,28 @@ async function logPlays(items) {
   if (lastLogged === hourKey) return;
   localStorage.setItem('last_log_hour', hourKey);
 
-  const seenIds = new Set();
-  const toLog = [];
+  // Group tracks by album, summing duration_ms
+  const albumMap = {};
   items.forEach(function(item) {
     const album = item.track.album;
-    if (!seenIds.has(album.id)) {
-      seenIds.add(album.id);
-      toLog.push({
+    const duration = item.track.duration_ms || 0;
+    if (!albumMap[album.id]) {
+      albumMap[album.id] = {
         spotify_album_id: album.id,
         album_name: album.name,
         artist: album.artists && album.artists[0] ? album.artists[0].name : '',
         image_url: album.images && album.images[0] ? album.images[0].url : '',
+        duration_ms: 0,
         logged_at: new Date().toISOString()
-      });
+      };
     }
+    albumMap[album.id].duration_ms += duration;
   });
-  if (toLog.length > 0) await db.from('play_logs').insert(toLog);
-}
 
-// ---- Recommendations ----
-async function loadRecommendations() {
-  const token = localStorage.getItem('spotify_token');
-  if (!token) return;
-
-  const { data: topRatings } = await db
-    .from('ratings')
-    .select('*, albums(*)')
-    .gte('rating', 8)
-    .order('rating', { ascending: false })
-    .limit(5);
-
-  if (!topRatings || topRatings.length === 0) return;
-
-  const { data: allRated } = await db.from('albums').select('spotify_id');
-  const ratedIds = new Set((allRated || []).map(function(a) { return a.spotify_id; }));
-
-  const recommendations = [];
-  const seenRecIds = new Set();
-
-  for (const r of topRatings) {
-    try {
-      const album = await spotifyFetch('https://api.spotify.com/v1/albums/' + r.albums.spotify_id);
-      if (!album) continue;
-      const artistId = album.artists && album.artists[0] ? album.artists[0].id : null;
-      if (!artistId) continue;
-
-      const related = await spotifyFetch('https://api.spotify.com/v1/artists/' + artistId + '/related-artists');
-      if (!related || !related.artists) continue;
-
-      for (const relArtist of related.artists.slice(0, 3)) {
-        const tok = localStorage.getItem('spotify_token');
-        const searchUrl = 'https://api.spotify.com/v1/search?q=artist:' +
-          encodeURIComponent(relArtist.name) + '&type=album&limit=5';
-        const res = await fetch(searchUrl, { headers: { Authorization: 'Bearer ' + tok } });
-        if (!res.ok) continue;
-        const searchData = await res.json();
-        if (!searchData.albums || !searchData.albums.items) continue;
-
-        for (const recAlbum of searchData.albums.items) {
-          const year = recAlbum.release_date ? parseInt(recAlbum.release_date.substring(0, 4)) : 0;
-          if (year < 2025) continue;
-          if (ratedIds.has(recAlbum.id)) continue;
-          if (seenRecIds.has(recAlbum.id)) continue;
-          if (recAlbum.album_type !== 'album') continue;
-          seenRecIds.add(recAlbum.id);
-          recommendations.push(recAlbum);
-          if (recommendations.length >= 12) break;
-        }
-        if (recommendations.length >= 12) break;
-      }
-      if (recommendations.length >= 12) break;
-    } catch(e) {
-      console.log('Rec error:', e);
-    }
+  const toLog = Object.values(albumMap);
+  if (toLog.length > 0) {
+    await db.from('play_logs').insert(toLog);
   }
-
-  if (recommendations.length === 0) return;
-
-  const section = document.getElementById('recommendations-section');
-  const container = document.getElementById('recommendations-results');
-  section.classList.remove('hidden');
-
-  container.innerHTML = recommendations.map(function(album) {
-    const img = album.images && album.images[0] ? album.images[0].url : '';
-    const artist = album.artists && album.artists[0] ? album.artists[0].name : '';
-    const year = album.release_date ? album.release_date.substring(0, 4) : '';
-    return '<div class="album-card" onclick="openAlbum(\'' + album.id + '\')">' +
-      '<img src="' + img + '" alt="' + album.name + '" />' +
-      '<div class="album-card-info"><h3>' + album.name + '</h3><p>' + artist + '</p>' +
-      '<p style="color:var(--green);font-size:0.68rem;margin-top:4px;font-weight:600">' + year + '</p></div></div>';
-  }).join('');
 }
 
 // ---- Replay Tracker ----
@@ -298,16 +227,29 @@ async function loadReplayTracker() {
 }
 
 function renderReplayBar(logs) {
-  const counts = {};
-  logs.forEach(function(log) { counts[log.album_name] = (counts[log.album_name] || 0) + 1; });
-  const sorted = Object.entries(counts).sort(function(a,b){ return b[1]-a[1]; }).slice(0,12);
-  const labels = sorted.map(function(e){ return e[0].length > 16 ? e[0].substring(0,16)+'…' : e[0]; });
-  const values = sorted.map(function(e){ return e[1]; });
+  // Sum total minutes per album across all logs
+  const minuteMap = {};
+  logs.forEach(function(log) {
+    const mins = log.duration_ms ? Math.round(log.duration_ms / 60000) : 0;
+    minuteMap[log.album_name] = (minuteMap[log.album_name] || 0) + mins;
+  });
+
+  const sorted = Object.entries(minuteMap)
+    .filter(function(e) { return e[1] > 0; })
+    .sort(function(a, b) { return b[1] - a[1]; })
+    .slice(0, 12);
+
+  if (sorted.length === 0) {
+    document.getElementById('replayBarChart').closest('.chart-card').innerHTML +=
+      '<p style="color:var(--text-muted);font-size:0.85rem;margin-top:16px;font-style:italic">No duration data yet — old logs don\'t have minutes. New plays will be tracked correctly going forward.</p>';
+    return;
+  }
+
+  const labels = sorted.map(function(e) { return e[0].length > 16 ? e[0].substring(0,16)+'…' : e[0]; });
+  const values = sorted.map(function(e) { return e[1]; });
 
   if (replayBarInstance) replayBarInstance.destroy();
   const ctx = document.getElementById('replayBarChart').getContext('2d');
-
-  // Green gradient for replay bar
   const gradient = ctx.createLinearGradient(0, 0, 0, 300);
   gradient.addColorStop(0, '#1DB954');
   gradient.addColorStop(1, '#0a4d22');
@@ -326,37 +268,55 @@ function renderReplayBar(logs) {
           titleColor: '#f0efe8',
           bodyColor: '#9e9d8e',
           callbacks: {
-            title: function(items){ return sorted[items[0].dataIndex][0]; },
-            label: function(item){ return item.raw + ' session' + (item.raw !== 1 ? 's' : ''); }
+            title: function(items) { return sorted[items[0].dataIndex][0]; },
+            label: function(item) { return item.raw + ' min listened'; }
           }
         }
       },
       scales: {
         x: { ticks: { color: '#5a5a4a', font: { size: 10, family: 'DM Sans' } }, grid: { color: '#2e2e24' } },
-        y: { ticks: { color: '#5a5a4a', stepSize: 1, font: { family: 'DM Sans' } }, grid: { color: '#2e2e24' } }
+        y: {
+          ticks: { color: '#5a5a4a', font: { family: 'DM Sans' }, callback: function(v) { return v + 'm'; } },
+          grid: { color: '#2e2e24' }
+        }
       }
     }
   });
 }
 
 function renderReplayLine(logs) {
+  // Group by date and album, summing minutes
   const byDate = {};
   logs.forEach(function(log) {
-    const date = log.logged_at.substring(0,10);
+    const date = log.logged_at.substring(0, 10);
+    const mins = log.duration_ms ? Math.round(log.duration_ms / 60000) : 0;
     if (!byDate[date]) byDate[date] = {};
-    byDate[date][log.album_name] = (byDate[date][log.album_name] || 0) + 1;
+    byDate[date][log.album_name] = (byDate[date][log.album_name] || 0) + mins;
   });
+
   const dates = Object.keys(byDate).sort();
-  const totalCounts = {};
-  logs.forEach(function(log){ totalCounts[log.album_name] = (totalCounts[log.album_name]||0)+1; });
-  const top5 = Object.entries(totalCounts).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[0];});
-  const colors = ['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
-  const datasets = top5.map(function(album,i){
+
+  // Top 5 albums by total minutes
+  const totalMins = {};
+  logs.forEach(function(log) {
+    const mins = log.duration_ms ? Math.round(log.duration_ms / 60000) : 0;
+    totalMins[log.album_name] = (totalMins[log.album_name] || 0) + mins;
+  });
+  const top5 = Object.entries(totalMins)
+    .filter(function(e) { return e[1] > 0; })
+    .sort(function(a, b) { return b[1] - a[1]; })
+    .slice(0, 5)
+    .map(function(e) { return e[0]; });
+
+  if (top5.length === 0) return;
+
+  const colors = ['#1DB954', '#e8a030', '#e05a3a', '#4a9eff', '#c084fc'];
+  const datasets = top5.map(function(album, i) {
     return {
-      label: album.length>20?album.substring(0,20)+'…':album,
-      data: dates.map(function(date){return (byDate[date]&&byDate[date][album])||0;}),
+      label: album.length > 20 ? album.substring(0,20)+'…' : album,
+      data: dates.map(function(date) { return (byDate[date] && byDate[date][album]) || 0; }),
       borderColor: colors[i],
-      backgroundColor: colors[i]+'22',
+      backgroundColor: colors[i] + '22',
       tension: 0.4,
       fill: false,
       pointRadius: 5,
@@ -387,12 +347,24 @@ function renderReplayLine(logs) {
           borderColor: '#2e2e24',
           borderWidth: 1,
           titleColor: '#f0efe8',
-          bodyColor: '#9e9d8e'
+          bodyColor: '#9e9d8e',
+          callbacks: {
+            label: function(item) {
+              return ' ' + item.dataset.label + ': ' + item.raw + ' min';
+            }
+          }
         }
       },
       scales: {
         x: { ticks: { color: '#5a5a4a', font: { size: 10, family: 'DM Sans' } }, grid: { color: '#2e2e24' } },
-        y: { ticks: { color: '#5a5a4a', stepSize: 1, font: { family: 'DM Sans' } }, grid: { color: '#2e2e24' } }
+        y: {
+          ticks: {
+            color: '#5a5a4a',
+            font: { family: 'DM Sans' },
+            callback: function(v) { return v + 'm'; }
+          },
+          grid: { color: '#2e2e24' }
+        }
       }
     }
   });
@@ -408,7 +380,6 @@ async function searchAlbums() {
   if (!query) return;
 
   document.getElementById('recent-section').classList.add('hidden');
-  document.getElementById('recommendations-section').classList.add('hidden');
   document.getElementById('search-results-section').classList.remove('hidden');
 
   const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=10', {
@@ -426,21 +397,21 @@ async function searchAlbums() {
   if (!data.albums || !data.albums.items) { alert('No results found.'); return; }
 
   const albums = data.albums.items;
-  const spotifyIds = albums.map(function(a){ return a.id; });
+  const spotifyIds = albums.map(function(a) { return a.id; });
   const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
   const ratedMap = {};
-  (ratedAlbums||[]).forEach(function(a){
-    if (a.ratings&&a.ratings.length>0) ratedMap[a.spotify_id]=a.ratings[0].rating;
+  (ratedAlbums || []).forEach(function(a) {
+    if (a.ratings && a.ratings.length > 0) ratedMap[a.spotify_id] = a.ratings[0].rating;
   });
 
   const container = document.getElementById('search-results');
   container.innerHTML = albums.map(function(album) {
-    const img = album.images&&album.images[0]?album.images[0].url:'';
-    const artist = album.artists&&album.artists[0]?album.artists[0].name:'';
-    const badge = ratedMap[album.id]!==undefined?'<span class="rating-badge">'+ratedMap[album.id]+'/10</span>':'';
-    return '<div class="album-card" onclick="openAlbum(\''+album.id+'\')">'+
-      '<img src="'+img+'" alt="'+album.name+'" />'+
-      '<div class="album-card-info"><h3>'+album.name+'</h3><p>'+artist+'</p>'+badge+'</div></div>';
+    const img = album.images && album.images[0] ? album.images[0].url : '';
+    const artist = album.artists && album.artists[0] ? album.artists[0].name : '';
+    const badge = ratedMap[album.id] !== undefined ? '<span class="rating-badge">' + ratedMap[album.id] + '/10</span>' : '';
+    return '<div class="album-card" onclick="openAlbum(\'' + album.id + '\')">' +
+      '<img src="' + img + '" alt="' + album.name + '" />' +
+      '<div class="album-card-info"><h3>' + album.name + '</h3><p>' + artist + '</p>' + badge + '</div></div>';
   }).join('');
 }
 
@@ -474,36 +445,35 @@ async function openAlbum(spotifyId) {
   const tracksHTML = currentTracks.map(function(t, i) {
     const isSelected = selectedTracks.includes(t.name);
     const safeName = t.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return '<div class="track-item '+(isSelected?'selected':'')+'" onclick="toggleTrack(\''+safeName+'\', this)">'+
-      '<span class="track-check">'+(isSelected?'★':'☆')+'</span>'+
-      '<span>'+(i+1)+'. '+t.name+'</span></div>';
+    return '<div class="track-item ' + (isSelected ? 'selected' : '') + '" onclick="toggleTrack(\'' + safeName + '\', this)">' +
+      '<span class="track-check">' + (isSelected ? '★' : '☆') + '</span>' +
+      '<span>' + (i+1) + '. ' + t.name + '</span></div>';
   }).join('');
 
   const year = album.release_date ? album.release_date.split('-')[0] : '';
   const artistName = album.artists && album.artists[0] ? album.artists[0].name : '';
 
   document.getElementById('modal-body').innerHTML =
-    '<div class="modal-album-header">'+
-    '<img src="'+(album.images&&album.images[0]?album.images[0].url:'')+'" alt="'+album.name+'" />'+
-    '<div>'+
-    '<h2>'+album.name+'</h2>'+
-    '<p>'+artistName+'</p>'+
-    '<p style="color:var(--text-muted);font-size:0.76rem;margin-top:4px">'+year+'</p>'+
-    '</div></div>'+
-    '<label>Rating (0–10)</label>'+
-    '<input type="number" id="rating-input" min="0" max="10" step="0.1" value="'+ratingVal+'" placeholder="e.g. 8.5" />'+
-    '<label>Comments</label>'+
-    '<textarea id="comment-input" placeholder="Write your thoughts…">'+commentVal+'</textarea>'+
-    '<label>Top Songs</label>'+
-    '<div class="tracks-list">'+tracksHTML+'</div>'+
-    '<button class="save-btn" onclick="saveRating(\''+spotifyId+'\')">Save Rating</button>';
+    '<div class="modal-album-header">' +
+    '<img src="' + (album.images && album.images[0] ? album.images[0].url : '') + '" alt="' + album.name + '" />' +
+    '<div><h2>' + album.name + '</h2>' +
+    '<p>' + artistName + '</p>' +
+    '<p style="color:var(--text-muted);font-size:0.76rem;margin-top:4px">' + year + '</p>' +
+    '</div></div>' +
+    '<label>Rating (0–10)</label>' +
+    '<input type="number" id="rating-input" min="0" max="10" step="0.1" value="' + ratingVal + '" placeholder="e.g. 8.5" />' +
+    '<label>Comments</label>' +
+    '<textarea id="comment-input" placeholder="Write your thoughts…">' + commentVal + '</textarea>' +
+    '<label>Top Songs</label>' +
+    '<div class="tracks-list">' + tracksHTML + '</div>' +
+    '<button class="save-btn" onclick="saveRating(\'' + spotifyId + '\')">Save Rating</button>';
 
   document.getElementById('modal').classList.remove('hidden');
 }
 
 function toggleTrack(name, el) {
   if (selectedTracks.includes(name)) {
-    selectedTracks = selectedTracks.filter(function(t){ return t !== name; });
+    selectedTracks = selectedTracks.filter(function(t) { return t !== name; });
     el.classList.remove('selected');
     el.querySelector('.track-check').textContent = '☆';
   } else {
@@ -550,8 +520,6 @@ async function saveRating(spotifyId) {
 function renderBarChart(data) {
   const sorted = [...data].sort(function(a, b) { return b.rating - a.rating; });
 
-  // Assign colors from a green gradient based on rating value
-  // 10 = bright green, 0 = very dark green
   function ratingToColor(v) {
     if (v >= 9.5) return '#1fef6a';
     if (v >= 9)   return '#1DB954';
@@ -619,8 +587,7 @@ function renderBarChart(data) {
           grid: { color: '#2e2e24' }
         },
         y: {
-          min: 0,
-          max: 10,
+          min: 0, max: 10,
           ticks: {
             color: '#5a5a4a',
             font: { family: 'DM Sans' },
@@ -649,15 +616,15 @@ async function loadRankings() {
     const comment = r.comments ?
       '<p style="color:var(--text-muted);font-size:0.72rem;margin-top:3px;font-style:italic">"' +
       r.comments.substring(0,70) + (r.comments.length > 70 ? '…' : '') + '"</p>' : '';
-    return '<div class="rankings-item ' + rankClass + '" onclick="openAlbum(\'' + r.albums.spotify_id + '\')">'+
-      '<div class="rank-num">' + (i+1) + '</div>'+
-      '<img src="' + r.albums.image_url + '" alt="' + r.albums.name + '" />'+
-      '<div class="rankings-item-info">'+
-        '<h3>' + r.albums.name + '</h3>'+
-        '<p>' + r.albums.artist + ' &nbsp;·&nbsp; ' + (r.albums.release_year || '') + '</p>'+
+    return '<div class="rankings-item ' + rankClass + '" onclick="openAlbum(\'' + r.albums.spotify_id + '\')">' +
+      '<div class="rank-num">' + (i+1) + '</div>' +
+      '<img src="' + r.albums.image_url + '" alt="' + r.albums.name + '" />' +
+      '<div class="rankings-item-info">' +
+        '<h3>' + r.albums.name + '</h3>' +
+        '<p>' + r.albums.artist + ' &nbsp;·&nbsp; ' + (r.albums.release_year || '') + '</p>' +
         topSongs + comment +
-      '</div>'+
-      '<div class="big-rating">' + r.rating + '</div>'+
+      '</div>' +
+      '<div class="big-rating">' + r.rating + '</div>' +
     '</div>';
   }).join('');
 }
@@ -684,5 +651,4 @@ window.addEventListener('load', async function() {
     if (e.key === 'Enter') searchAlbums();
   });
   loadRecentlyPlayed();
-  loadRecommendations();
 });
