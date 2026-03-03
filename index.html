@@ -28,6 +28,7 @@
         <button onclick="showPage('search')" class="nav-btn active" id="nav-search">Search</button>
         <button onclick="showPage('rankings')" class="nav-btn" id="nav-rankings">Rankings</button>
         <button onclick="showPage('replay')" class="nav-btn" id="nav-replay">Replay Tracker</button>
+        <button onclick="showPage('week')" class="nav-btn" id="nav-week">Week in Review</button>
       </nav>
     </header>
 
@@ -37,30 +38,23 @@
         <h2>Find an <em>Album</em></h2>
         <p>Search Spotify or browse your recent listens below</p>
       </div>
-
       <div class="search-bar">
         <input type="text" id="search-input" placeholder="Artist, album, or keyword…" />
         <button onclick="searchAlbums()">Search</button>
       </div>
-
       <div id="search-results-section" class="hidden">
         <div class="mcm-divider">
           <div class="mcm-divider-line"></div>
-          <div class="mcm-divider-ornament">
-            <span></span><span></span><span></span>
-          </div>
+          <div class="mcm-divider-ornament"><span></span><span></span><span></span></div>
           <span class="mcm-divider-label">Results</span>
           <div class="mcm-divider-line"></div>
         </div>
         <div id="search-results" class="album-grid"></div>
       </div>
-
       <div id="recent-section">
         <div class="mcm-divider">
           <div class="mcm-divider-line"></div>
-          <div class="mcm-divider-ornament">
-            <span></span><span></span><span></span>
-          </div>
+          <div class="mcm-divider-ornament"><span></span><span></span><span></span></div>
           <span class="mcm-divider-label">Recently Played</span>
           <div class="mcm-divider-line"></div>
         </div>
@@ -94,8 +88,38 @@
         <canvas id="replayBarChart"></canvas>
       </div>
       <div class="chart-card">
-        <h3>Play Timeline</h3>
+        <h3>Play Timeline — Minutes per Day</h3>
         <canvas id="replayLineChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Week in Review Page -->
+    <div id="page-week" class="page hidden">
+      <div class="page-header">
+        <h2>Week in <em>Review</em></h2>
+        <p>A snapshot of your listening week — download as an Instagram Story</p>
+      </div>
+      <div class="week-controls">
+        <div class="week-picker">
+          <label class="week-label">Week starting</label>
+          <input type="date" id="week-start-input" />
+        </div>
+        <button class="generate-btn" onclick="generateWeekReview()">Generate Card</button>
+      </div>
+      <div id="week-loading" class="hidden week-loading">
+        <div class="week-loading-inner">
+          <div class="loading-spinner"></div>
+          <p>Building your card…</p>
+        </div>
+      </div>
+      <div id="week-output" class="hidden">
+        <div class="week-canvas-wrap">
+          <canvas id="weekCanvas" width="1080" height="1350"></canvas>
+        </div>
+        <button class="download-btn" onclick="downloadWeekCard()">↓ Download PNG</button>
+      </div>
+      <div id="week-empty" class="hidden">
+        <p class="week-empty-msg">No data found for this week. Try a different date or make sure you've rated some albums and opened the app during that period.</p>
       </div>
     </div>
 
