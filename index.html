@@ -12,15 +12,15 @@
   <div id="app">
     <header>
       <div class="logo">
-  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="0" y="11" width="4" height="6" rx="2" fill="#1DB954"/>
-    <rect x="6" y="7" width="4" height="14" rx="2" fill="#1DB954"/>
-    <rect x="12" y="3" width="4" height="22" rx="2" fill="#1DB954"/>
-    <rect x="18" y="7" width="4" height="14" rx="2" fill="#1DB954"/>
-    <rect x="24" y="11" width="4" height="6" rx="2" fill="#1DB954"/>
-  </svg>
-  <span>ALBUM <strong>RATER</strong></span>
-</div>
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="11" width="4" height="6" rx="2" fill="#1DB954"/>
+          <rect x="6" y="7" width="4" height="14" rx="2" fill="#1DB954"/>
+          <rect x="12" y="3" width="4" height="22" rx="2" fill="#1DB954"/>
+          <rect x="18" y="7" width="4" height="14" rx="2" fill="#1DB954"/>
+          <rect x="24" y="11" width="4" height="6" rx="2" fill="#1DB954"/>
+        </svg>
+        <span>ALBUM <strong>RATER</strong></span>
+      </div>
       <nav>
         <button onclick="showPage('search')" class="nav-btn active" id="nav-search">Search</button>
         <button onclick="showPage('rankings')" class="nav-btn" id="nav-rankings">My Rankings</button>
@@ -34,27 +34,34 @@
         <input type="text" id="search-input" placeholder="Search for an album..." />
         <button onclick="searchAlbums()">Search</button>
       </div>
-      <div id="recent-section">
-        <h3 class="section-label">Recently Played</h3>
-        <div id="recent-results" class="album-grid"></div>
-      </div>
+
       <div id="search-results-section" class="hidden">
-        <h3 class="section-label">Search Results</h3>
+        <p class="section-label">Search Results</p>
         <div id="search-results" class="album-grid"></div>
+      </div>
+
+      <div id="recommendations-section" class="hidden">
+        <p class="section-label">Recommended for You — 2025 & 2026</p>
+        <div id="recommendations-results" class="album-grid"></div>
+      </div>
+
+      <div id="recent-section">
+        <p class="section-label">Recently Played</p>
+        <div id="recent-results" class="album-grid"></div>
       </div>
     </div>
 
     <!-- Rankings Page -->
     <div id="page-rankings" class="page hidden">
-      <h2>My Album Rankings</h2>
+      <h2>My Rankings</h2>
       <div class="charts-section">
         <div class="chart-card">
           <h3>Albums by Rating</h3>
           <canvas id="barChart"></canvas>
         </div>
         <div class="chart-card">
-          <h3>Genre Breakdown</h3>
-          <canvas id="genreChart"></canvas>
+          <h3>Release Year vs. Rating</h3>
+          <canvas id="scatterChart"></canvas>
         </div>
       </div>
       <div id="rankings-list"></div>
