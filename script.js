@@ -11,7 +11,6 @@ let currentTracks = [];
 let selectedTracks = [];
 let existingRating = null;
 let barChartInstance = null;
-let scatterChartInstance = null;
 let replayBarInstance = null;
 let replayLineInstance = null;
 
@@ -217,7 +216,6 @@ async function loadRecommendations() {
   const token = localStorage.getItem('spotify_token');
   if (!token) return;
 
-  // Get your highest rated albums (8+)
   const { data: topRatings } = await db
     .from('ratings')
     .select('*, albums(*)')
@@ -227,11 +225,9 @@ async function loadRecommendations() {
 
   if (!topRatings || topRatings.length === 0) return;
 
-  // Get all already-rated spotify IDs to filter them out
   const { data: allRated } = await db.from('albums').select('spotify_id');
   const ratedIds = new Set((allRated || []).map(function(a) { return a.spotify_id; }));
 
-  // For each top album, get the artist, then related artists, then their 2025/2026 albums
   const recommendations = [];
   const seenRecIds = new Set();
 
@@ -245,12 +241,11 @@ async function loadRecommendations() {
       const related = await spotifyFetch('https://api.spotify.com/v1/artists/' + artistId + '/related-artists');
       if (!related || !related.artists) continue;
 
-      // Take top 3 related artists
       for (const relArtist of related.artists.slice(0, 3)) {
-        const searchUrl = 'https://api.spotify.com/v1/search?q=artist:"' +
-          encodeURIComponent(relArtist.name) + '"&type=album&limit=5';
-        const token = localStorage.getItem('spotify_token');
-        const res = await fetch(searchUrl, { headers: { Authorization: 'Bearer ' + token } });
+        const tok = localStorage.getItem('spotify_token');
+        const searchUrl = 'https://api.spotify.com/v1/search?q=artist:' +
+          encodeURIComponent(relArtist.name) + '&type=album&limit=5';
+        const res = await fetch(searchUrl, { headers: { Authorization: 'Bearer ' + tok } });
         if (!res.ok) continue;
         const searchData = await res.json();
         if (!searchData.albums || !searchData.albums.items) continue;
@@ -286,7 +281,7 @@ async function loadRecommendations() {
     return '<div class="album-card" onclick="openAlbum(\'' + album.id + '\')">' +
       '<img src="' + img + '" alt="' + album.name + '" />' +
       '<div class="album-card-info"><h3>' + album.name + '</h3><p>' + artist + '</p>' +
-      '<p style="color:var(--green);font-size:0.7rem;margin-top:3px">' + year + '</p></div></div>';
+      '<p style="color:var(--green);font-size:0.68rem;margin-top:4px;font-weight:600">' + year + '</p></div></div>';
   }).join('');
 }
 
@@ -295,7 +290,7 @@ async function loadReplayTracker() {
   const { data: logs } = await db.from('play_logs').select('*').order('logged_at', { ascending: true });
   if (!logs || logs.length === 0) {
     document.getElementById('replayBarChart').closest('.chart-card').innerHTML +=
-      '<p style="color:var(--text-muted);font-size:0.85rem;margin-top:8px">No play data yet — open the app a few times to start building your history!</p>';
+      '<p style="color:var(--text-muted);font-size:0.85rem;margin-top:16px;font-style:italic">No play data yet — open the app a few times to start building your history.</p>';
     return;
   }
   renderReplayBar(logs);
@@ -306,24 +301,39 @@ function renderReplayBar(logs) {
   const counts = {};
   logs.forEach(function(log) { counts[log.album_name] = (counts[log.album_name] || 0) + 1; });
   const sorted = Object.entries(counts).sort(function(a,b){ return b[1]-a[1]; }).slice(0,12);
-  const labels = sorted.map(function(e){ return e[0].length > 15 ? e[0].substring(0,15)+'…' : e[0]; });
+  const labels = sorted.map(function(e){ return e[0].length > 16 ? e[0].substring(0,16)+'…' : e[0]; });
   const values = sorted.map(function(e){ return e[1]; });
+
   if (replayBarInstance) replayBarInstance.destroy();
   const ctx = document.getElementById('replayBarChart').getContext('2d');
+
+  // Green gradient for replay bar
+  const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+  gradient.addColorStop(0, '#1DB954');
+  gradient.addColorStop(1, '#0a4d22');
+
   replayBarInstance = new Chart(ctx, {
     type: 'bar',
-    data: { labels: labels, datasets: [{ data: values, backgroundColor: '#1DB954', borderRadius: 4 }] },
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: gradient, borderRadius: 3, borderSkipped: false }] },
     options: {
       responsive: true,
-      plugins: { legend: { display: false },
-        tooltip: { callbacks: {
-          title: function(items){ return sorted[items[0].dataIndex][0]; },
-          label: function(item){ return item.raw + ' session' + (item.raw !== 1 ? 's' : ''); }
-        }}
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1a15',
+          borderColor: '#2e2e24',
+          borderWidth: 1,
+          titleColor: '#f0efe8',
+          bodyColor: '#9e9d8e',
+          callbacks: {
+            title: function(items){ return sorted[items[0].dataIndex][0]; },
+            label: function(item){ return item.raw + ' session' + (item.raw !== 1 ? 's' : ''); }
+          }
+        }
       },
       scales: {
-        x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: '#222' } },
-        y: { ticks: { color: '#aaa', stepSize: 1 }, grid: { color: '#222' } }
+        x: { ticks: { color: '#5a5a4a', font: { size: 10, family: 'DM Sans' } }, grid: { color: '#2e2e24' } },
+        y: { ticks: { color: '#5a5a4a', stepSize: 1, font: { family: 'DM Sans' } }, grid: { color: '#2e2e24' } }
       }
     }
   });
@@ -340,15 +350,21 @@ function renderReplayLine(logs) {
   const totalCounts = {};
   logs.forEach(function(log){ totalCounts[log.album_name] = (totalCounts[log.album_name]||0)+1; });
   const top5 = Object.entries(totalCounts).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[0];});
-  const colors = ['#1DB954','#6c63ff','#ff6363','#ffb347','#00bcd4'];
+  const colors = ['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
   const datasets = top5.map(function(album,i){
     return {
       label: album.length>20?album.substring(0,20)+'…':album,
       data: dates.map(function(date){return (byDate[date]&&byDate[date][album])||0;}),
-      borderColor: colors[i], backgroundColor: colors[i]+'33',
-      tension: 0.3, fill: false, pointRadius: 4
+      borderColor: colors[i],
+      backgroundColor: colors[i]+'22',
+      tension: 0.4,
+      fill: false,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      borderWidth: 2
     };
   });
+
   if (replayLineInstance) replayLineInstance.destroy();
   const ctx = document.getElementById('replayLineChart').getContext('2d');
   replayLineInstance = new Chart(ctx, {
@@ -356,10 +372,27 @@ function renderReplayLine(logs) {
     data: { labels: dates, datasets: datasets },
     options: {
       responsive: true,
-      plugins: { legend: { labels: { color: '#aaa', font: { size: 11 } } } },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#9e9d8e',
+            font: { size: 11, family: 'DM Sans' },
+            boxWidth: 10,
+            usePointStyle: true,
+            pointStyle: 'circle'
+          }
+        },
+        tooltip: {
+          backgroundColor: '#1a1a15',
+          borderColor: '#2e2e24',
+          borderWidth: 1,
+          titleColor: '#f0efe8',
+          bodyColor: '#9e9d8e'
+        }
+      },
       scales: {
-        x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: '#222' } },
-        y: { ticks: { color: '#aaa', stepSize: 1 }, grid: { color: '#222' } }
+        x: { ticks: { color: '#5a5a4a', font: { size: 10, family: 'DM Sans' } }, grid: { color: '#2e2e24' } },
+        y: { ticks: { color: '#5a5a4a', stepSize: 1, font: { family: 'DM Sans' } }, grid: { color: '#2e2e24' } }
       }
     }
   });
@@ -396,7 +429,9 @@ async function searchAlbums() {
   const spotifyIds = albums.map(function(a){ return a.id; });
   const { data: ratedAlbums } = await db.from('albums').select('spotify_id, ratings(rating)').in('spotify_id', spotifyIds);
   const ratedMap = {};
-  (ratedAlbums||[]).forEach(function(a){ if (a.ratings&&a.ratings.length>0) ratedMap[a.spotify_id]=a.ratings[0].rating; });
+  (ratedAlbums||[]).forEach(function(a){
+    if (a.ratings&&a.ratings.length>0) ratedMap[a.spotify_id]=a.ratings[0].rating;
+  });
 
   const container = document.getElementById('search-results');
   container.innerHTML = albums.map(function(album) {
@@ -444,16 +479,22 @@ async function openAlbum(spotifyId) {
       '<span>'+(i+1)+'. '+t.name+'</span></div>';
   }).join('');
 
+  const year = album.release_date ? album.release_date.split('-')[0] : '';
+  const artistName = album.artists && album.artists[0] ? album.artists[0].name : '';
+
   document.getElementById('modal-body').innerHTML =
     '<div class="modal-album-header">'+
     '<img src="'+(album.images&&album.images[0]?album.images[0].url:'')+'" alt="'+album.name+'" />'+
-    '<div><h2>'+album.name+'</h2>'+
-    '<p>'+(album.artists&&album.artists[0]?album.artists[0].name:'')+' · '+(album.release_date?album.release_date.split('-')[0]:'')+' </p></div></div>'+
+    '<div>'+
+    '<h2>'+album.name+'</h2>'+
+    '<p>'+artistName+'</p>'+
+    '<p style="color:var(--text-muted);font-size:0.76rem;margin-top:4px">'+year+'</p>'+
+    '</div></div>'+
     '<label>Rating (0–10)</label>'+
     '<input type="number" id="rating-input" min="0" max="10" step="0.1" value="'+ratingVal+'" placeholder="e.g. 8.5" />'+
     '<label>Comments</label>'+
-    '<textarea id="comment-input" placeholder="Write your thoughts...">'+commentVal+'</textarea>'+
-    '<label>Top Songs (tap to mark)</label>'+
+    '<textarea id="comment-input" placeholder="Write your thoughts…">'+commentVal+'</textarea>'+
+    '<label>Top Songs</label>'+
     '<div class="tracks-list">'+tracksHTML+'</div>'+
     '<button class="save-btn" onclick="saveRating(\''+spotifyId+'\')">Save Rating</button>';
 
@@ -480,68 +521,74 @@ function closeModal() {
 async function saveRating(spotifyId) {
   const rating = parseFloat(document.getElementById('rating-input').value);
   const comments = document.getElementById('comment-input').value;
-  if (isNaN(rating) || rating < 0 || rating > 10) { alert('Please enter a rating between 0 and 10'); return; }
+  if (isNaN(rating) || rating < 0 || rating > 10) {
+    alert('Please enter a rating between 0 and 10');
+    return;
+  }
   const { data: albumRow } = await db.from('albums').upsert({
     spotify_id: spotifyId,
     name: currentAlbum.name,
-    artist: currentAlbum.artists[0]?currentAlbum.artists[0].name:'',
-    image_url: currentAlbum.images&&currentAlbum.images[0]?currentAlbum.images[0].url:'',
-    release_year: currentAlbum.release_date?currentAlbum.release_date.split('-')[0]:''
+    artist: currentAlbum.artists[0] ? currentAlbum.artists[0].name : '',
+    image_url: currentAlbum.images && currentAlbum.images[0] ? currentAlbum.images[0].url : '',
+    release_year: currentAlbum.release_date ? currentAlbum.release_date.split('-')[0] : ''
   }, { onConflict: 'spotify_id' }).select().single();
+
   if (existingRating) {
-    await db.from('ratings').update({ rating, comments, top_songs: selectedTracks, updated_at: new Date().toISOString() }).eq('id', existingRating.id);
+    await db.from('ratings').update({
+      rating: rating, comments: comments, top_songs: selectedTracks, updated_at: new Date().toISOString()
+    }).eq('id', existingRating.id);
   } else {
-    await db.from('ratings').insert({ album_id: albumRow.id, rating, comments, top_songs: selectedTracks });
+    await db.from('ratings').insert({
+      album_id: albumRow.id, rating: rating, comments: comments, top_songs: selectedTracks
+    });
   }
   closeModal();
   alert('Rating saved! ✅');
 }
 
-// ---- Charts ----
+// ---- Bar Chart with Green Gradient ----
 function renderBarChart(data) {
-  const sorted = [...data].sort(function(a,b){ return b.rating-a.rating; });
-  const labels = sorted.map(function(r){ return r.albums.name.length>15?r.albums.name.substring(0,15)+'…':r.albums.name; });
-  const values = sorted.map(function(r){ return r.rating; });
-  const colors = values.map(function(v){ return v>=8?'#1DB954':v>=6?'#17a844':v>=4?'#b3b300':'#cc3300'; });
+  const sorted = [...data].sort(function(a, b) { return b.rating - a.rating; });
+
+  // Assign colors from a green gradient based on rating value
+  // 10 = bright green, 0 = very dark green
+  function ratingToColor(v) {
+    if (v >= 9.5) return '#1fef6a';
+    if (v >= 9)   return '#1DB954';
+    if (v >= 8)   return '#19a348';
+    if (v >= 7)   return '#148d3c';
+    if (v >= 6)   return '#0f7731';
+    if (v >= 5)   return '#0b6128';
+    if (v >= 4)   return '#074b1e';
+    if (v >= 3)   return '#053a17';
+    if (v >= 2)   return '#032a10';
+    return '#021a0a';
+  }
+
+  const labels = sorted.map(function(r) {
+    const n = r.albums.name;
+    return n.length > 16 ? n.substring(0, 16) + '…' : n;
+  });
+  const values = sorted.map(function(r) { return r.rating; });
+  const colors = values.map(ratingToColor);
+  const borderColors = values.map(function(v) {
+    return v >= 7 ? 'rgba(29,185,84,0.4)' : 'rgba(29,185,84,0.1)';
+  });
+
   if (barChartInstance) barChartInstance.destroy();
   const ctx = document.getElementById('barChart').getContext('2d');
+
   barChartInstance = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }] },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false },
-        tooltip: { callbacks: {
-          title: function(items){ return sorted[items[0].dataIndex].albums.name; },
-          label: function(item){ return item.raw+' / 10'; }
-        }}
-      },
-      scales: {
-        x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: '#222' } },
-        y: { min: 0, max: 10, ticks: { color: '#aaa' }, grid: { color: '#222' } }
-      }
-    }
-  });
-}
-
-function renderScatterChart(data) {
-  const points = data.map(function(r) {
-    const year = parseInt(r.albums.release_year) || 0;
-    return { x: year, y: r.rating, label: r.albums.name };
-  }).filter(function(p){ return p.x > 1900; });
-
-  if (scatterChartInstance) scatterChartInstance.destroy();
-  const ctx = document.getElementById('scatterChart').getContext('2d');
-  scatterChartInstance = new Chart(ctx, {
-    type: 'scatter',
     data: {
+      labels: labels,
       datasets: [{
-        data: points,
-        backgroundColor: '#1DB954aa',
-        borderColor: '#1DB954',
+        data: values,
+        backgroundColor: colors,
+        borderColor: borderColors,
         borderWidth: 1,
-        pointRadius: 6,
-        pointHoverRadius: 8
+        borderRadius: 3,
+        borderSkipped: false
       }]
     },
     options: {
@@ -549,24 +596,37 @@ function renderScatterChart(data) {
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: '#1a1a15',
+          borderColor: '#2e2e24',
+          borderWidth: 1,
+          titleColor: '#f0efe8',
+          titleFont: { family: 'DM Sans', weight: '700' },
+          bodyColor: '#9e9d8e',
+          bodyFont: { family: 'DM Sans' },
+          padding: 12,
           callbacks: {
+            title: function(items) { return sorted[items[0].dataIndex].albums.name; },
             label: function(item) {
-              return points[item.dataIndex].label + ' (' + item.parsed.x + ') — ' + item.parsed.y + '/10';
+              const r = sorted[item.dataIndex];
+              return ' ' + item.raw + ' / 10  —  ' + r.albums.artist;
             }
           }
         }
       },
       scales: {
         x: {
-          title: { display: true, text: 'Release Year', color: '#555', font: { size: 10 } },
-          ticks: { color: '#aaa', font: { size: 10 } },
-          grid: { color: '#222' }
+          ticks: { color: '#5a5a4a', font: { size: 10, family: 'DM Sans' }, maxRotation: 45 },
+          grid: { color: '#2e2e24' }
         },
         y: {
-          min: 0, max: 10,
-          title: { display: true, text: 'Your Rating', color: '#555', font: { size: 10 } },
-          ticks: { color: '#aaa' },
-          grid: { color: '#222' }
+          min: 0,
+          max: 10,
+          ticks: {
+            color: '#5a5a4a',
+            font: { family: 'DM Sans' },
+            callback: function(v) { return v % 2 === 0 ? v : ''; }
+          },
+          grid: { color: '#2e2e24' }
         }
       }
     }
@@ -578,23 +638,27 @@ async function loadRankings() {
   const { data } = await db.from('ratings').select('*, albums(*)').order('rating', { ascending: false });
   const container = document.getElementById('rankings-list');
   if (!data || data.length === 0) {
-    container.innerHTML = '<div class="empty-state">No ratings yet.<br>Search for an album to get started.</div>';
+    container.innerHTML = '<div class="empty-state">Nothing rated yet.<br>Head to Search to get started.</div>';
     return;
   }
   renderBarChart(data);
-  renderScatterChart(data);
   container.innerHTML = data.map(function(r, i) {
-    const topSongs = r.top_songs&&r.top_songs.length>0?
-      '<p style="color:var(--green);font-size:0.75rem;margin-top:4px">★ '+r.top_songs.slice(0,3).join(', ')+'</p>':'';
-    const comment = r.comments?
-      '<p style="color:var(--text-muted);font-size:0.75rem;margin-top:2px">"'+r.comments.substring(0,60)+(r.comments.length>60?'...':'')+'"</p>':'';
-    return '<div class="rankings-item" onclick="openAlbum(\''+r.albums.spotify_id+'\')">'+
-      '<div class="rank-num">'+(i+1)+'</div>'+
-      '<img src="'+r.albums.image_url+'" alt="'+r.albums.name+'" />'+
-      '<div class="rankings-item-info"><h3>'+r.albums.name+'</h3>'+
-      '<p>'+r.albums.artist+' · '+(r.albums.release_year||'')+'</p>'+
-      topSongs+comment+'</div>'+
-      '<div class="big-rating">'+r.rating+'</div></div>';
+    const rankClass = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : '';
+    const topSongs = r.top_songs && r.top_songs.length > 0 ?
+      '<p style="color:var(--green);font-size:0.72rem;margin-top:5px;letter-spacing:0.02em">★ ' + r.top_songs.slice(0,3).join(' · ') + '</p>' : '';
+    const comment = r.comments ?
+      '<p style="color:var(--text-muted);font-size:0.72rem;margin-top:3px;font-style:italic">"' +
+      r.comments.substring(0,70) + (r.comments.length > 70 ? '…' : '') + '"</p>' : '';
+    return '<div class="rankings-item ' + rankClass + '" onclick="openAlbum(\'' + r.albums.spotify_id + '\')">'+
+      '<div class="rank-num">' + (i+1) + '</div>'+
+      '<img src="' + r.albums.image_url + '" alt="' + r.albums.name + '" />'+
+      '<div class="rankings-item-info">'+
+        '<h3>' + r.albums.name + '</h3>'+
+        '<p>' + r.albums.artist + ' &nbsp;·&nbsp; ' + (r.albums.release_year || '') + '</p>'+
+        topSongs + comment +
+      '</div>'+
+      '<div class="big-rating">' + r.rating + '</div>'+
+    '</div>';
   }).join('');
 }
 
