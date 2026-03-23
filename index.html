@@ -97,17 +97,13 @@
       </div>
     </div>
 
-    <!-- Week in Review Page -->
+<!-- Week in Review Page -->
     <div id="page-week" class="page hidden">
       <div class="page-header">
         <h2>Week in <em>Review</em></h2>
-        <p>A snapshot of your listening week — download as an Instagram Story</p>
+        <p>Your last 7 days of listening — auto-generated, ready to share</p>
       </div>
       <div class="week-controls">
-        <div class="week-picker">
-          <label class="week-label">Week starting</label>
-          <input type="date" id="week-start-input" />
-        </div>
         <button class="generate-btn" onclick="generateWeekReview()">Generate Card</button>
       </div>
       <div id="week-loading" class="hidden week-loading">
@@ -123,7 +119,7 @@
         <button class="download-btn" onclick="downloadWeekCard()">↓ Save to Photos</button>
       </div>
       <div id="week-empty" class="hidden">
-        <p class="week-empty-msg">No data found for this week. Try a different date or make sure you've rated some albums and opened the app during that period.</p>
+        <p class="week-empty-msg">No data found for the last 7 days. Make sure you've opened the app a few times this week so your plays get logged.</p>
       </div>
     </div>
 
