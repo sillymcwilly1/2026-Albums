@@ -174,9 +174,21 @@ async function logPlays(items) {
     String(now.getMonth()+1).padStart(2,'0') + '-' +
     String(now.getDate()).padStart(2,'0') + 'T' +
     String(now.getHours()).padStart(2,'0');
+
   const lastLogged = localStorage.getItem('last_log_hour');
-  if (lastLogged === hourKey) return;
+  
+  // If last log was more than 2 hours ago, clear it and re-log
+  if (lastLogged) {
+    const lastDate = new Date(lastLogged.replace('T', ' ') + ':00:00');
+    const hoursSince = (now - lastDate) / (1000 * 60 * 60);
+    if (hoursSince > 2) {
+      localStorage.removeItem('last_log_hour');
+    }
+  }
+  
+  if (localStorage.getItem('last_log_hour') === hourKey) return;
   localStorage.setItem('last_log_hour', hourKey);
+
   const albumMap = {};
   items.forEach(function(item) {
     const album = item.track.album;
@@ -193,10 +205,13 @@ async function logPlays(items) {
     }
     albumMap[album.id].duration_ms += duration;
   });
-  const toLog = Object.values(albumMap);
-  if (toLog.length > 0) await db.from('play_logs').insert(toLog);
-}
 
+  const toLog = Object.values(albumMap);
+  if (toLog.length > 0) {
+    const { error } = await db.from('play_logs').insert(toLog);
+    if (error) console.error('Play log insert failed:', error);
+  }
+}
 // ---- Replay Tracker ----
 async function loadReplayTracker() {
   const { data: logs } = await db.from('play_logs').select('*').order('logged_at', { ascending: true });
