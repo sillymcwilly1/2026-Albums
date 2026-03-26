@@ -211,7 +211,7 @@ async function logPlays(items) {
 
 // ---- Replay Tracker ----
 async function loadReplayTracker() {
-  const { data: logs, error } = await db.from('play_logs').select('*').order('logged_at', { ascending: true });
+  const { data: logs, error } = await db.from('play_logs').select('*').order('logged_at', { ascending: true }).limit(10000);
   console.log('Replay logs count:', logs ? logs.length : 0, 'Error:', error);
   if (!logs || logs.length === 0) {
     document.getElementById('replayBarChart').closest('.chart-card').innerHTML +=
