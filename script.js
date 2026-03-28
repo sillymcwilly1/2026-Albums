@@ -545,8 +545,8 @@ async function loadRankings() {
 const CW = 1080;
 const CH = 1920;
 const PAD = 72;
-const SAFE_TOP = 120;    // breathing room for Instagram top UI
-const SAFE_BOTTOM = 160; // breathing room for Instagram bottom UI
+const SAFE_TOP = 250;    // tall MCM header zone for Instagram top icons
+const SAFE_BOTTOM = 320; // tall MCM footer zone for Instagram reply bar
 
 // Fixed layout grid — every section has a known Y and height
 const LAYOUT = {
@@ -851,24 +851,50 @@ function drawWeekCard(d) {
   ctx.restore();
 
   // Top bar
-  ctx.fillStyle='#1DB954'; ctx.fillRect(0,LAYOUT.topBar.y,CW,LAYOUT.topBar.h);
+ // ── MCM Header Zone (sits behind Instagram top UI) ──
+  // Dark background so Instagram icons stay readable
+  ctx.fillStyle = '#0a0a08';
+  ctx.fillRect(0, 0, CW, SAFE_TOP);
 
-  // Logo
-  const wBars=[8,18,28,36,28,18,8], wBarW=10, wGap=6;
-  const wMidY=LAYOUT.logo.y+65;
+  // Thin green top edge
+  ctx.fillStyle = '#1DB954';
+  ctx.fillRect(0, 0, CW, 6);
+
+  // MCM starburst — top right, subtle
+  drawStarburst(ctx, CW - 80, 80, 120, 20, 'rgba(29,185,84,0.09)');
+
+  // MCM atomic dot grid — top left
+  drawAtomicDots(ctx, PAD, 60, 'rgba(29,185,84,0.15)');
+
+  // Horizontal rule at bottom of header zone
+  ctx.strokeStyle = '#1DB954';
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(PAD, SAFE_TOP - 1);
+  ctx.lineTo(CW - PAD, SAFE_TOP - 1);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // ── Title block (just below header zone) ──
+  // Waveform
+  const wBars=[6,14,22,30,22,14,6], wBarW=9, wGap=5;
+  const wMidY = SAFE_TOP + 70;
   wBars.forEach(function(h,i) {
     ctx.fillStyle='#1DB954';
-    ctx.beginPath(); ctx.roundRect(PAD+i*(wBarW+wGap),wMidY-h/2,wBarW,h,4); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(PAD+i*(wBarW+wGap), wMidY-h/2, wBarW, h, 3); ctx.fill();
   });
-  ctx.fillStyle='#5a5a4a'; ctx.font='300 24px "DM Sans",sans-serif';
-  ctx.fillText('YOUR PERSONAL', PAD+110, LAYOUT.logo.y+50);
-  ctx.fillStyle='#f0efe8'; ctx.font='italic 56px "DM Serif Display",serif';
-  ctx.fillText('Album ', PAD+110, LAYOUT.logo.y+108);
+  // "Album Rater" title
+  ctx.fillStyle='#5a5a4a'; ctx.font='300 22px "DM Sans",sans-serif';
+  ctx.fillText('YOUR PERSONAL', PAD+100, SAFE_TOP + 48);
+  ctx.fillStyle='#f0efe8'; ctx.font='italic 52px "DM Serif Display",serif';
+  ctx.fillText('Album ', PAD+100, SAFE_TOP + 100);
   const alW=ctx.measureText('Album ').width;
-  ctx.fillStyle='#1DB954'; ctx.font='56px "DM Serif Display",serif';
-  ctx.fillText('Rater', PAD+110+alW, LAYOUT.logo.y+108);
-  ctx.fillStyle='#1DB954'; ctx.beginPath(); ctx.arc(CW-PAD,LAYOUT.logo.y+65,10,0,Math.PI*2); ctx.fill();
-
+  ctx.fillStyle='#1DB954'; ctx.font='52px "DM Serif Display",serif';
+  ctx.fillText('Rater', PAD+100+alW, SAFE_TOP + 100);
+  // Green dot accent
+  ctx.fillStyle='#1DB954';
+  ctx.beginPath(); ctx.arc(CW-PAD, SAFE_TOP+60, 9, 0, Math.PI*2); ctx.fill();
   // Divider 1
   drawMCMDivider(ctx, PAD, LAYOUT.div1.y, CW-PAD*2);
 
@@ -1017,16 +1043,44 @@ function drawWeekCard(d) {
     ctx.textAlign='left';
   }
 
-  // Bottom bar
-  ctx.fillStyle='#1DB954'; ctx.fillRect(0,LAYOUT.bottomBar.y,CW,LAYOUT.bottomBar.h);
+// ── MCM Footer Zone (sits behind Instagram reply bar) ──
+  ctx.fillStyle = '#0a0a08';
+  ctx.fillRect(0, CH - SAFE_BOTTOM, CW, SAFE_BOTTOM);
 
-  // Footer
-  ctx.fillStyle='#2e2e24'; ctx.font='400 22px "DM Sans",sans-serif';
-  ctx.textAlign='center';
-  ctx.fillText('Album Rater · sillymcwilly1.github.io/2026-Albums', CW/2, LAYOUT.bottomBar.y-14);
-  ctx.textAlign='left';
+  // Thin green line at top of footer zone
+  ctx.strokeStyle = '#1DB954';
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(PAD, CH - SAFE_BOTTOM + 1);
+  ctx.lineTo(CW - PAD, CH - SAFE_BOTTOM + 1);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // MCM boomerang arc in footer
+  ctx.save();
+  ctx.strokeStyle = 'rgba(29,185,84,0.08)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(CW - PAD - 200, CH - SAFE_BOTTOM + 40);
+  ctx.quadraticCurveTo(CW - PAD, CH - SAFE_BOTTOM/2, CW - PAD - 200, CH - 40);
+  ctx.stroke();
+  ctx.restore();
+
+  // MCM atomic dots — bottom left of footer
+  drawAtomicDots(ctx, PAD, CH - SAFE_BOTTOM + 60, 'rgba(29,185,84,0.1)');
+
+  // Thin green bottom edge
+  ctx.fillStyle = '#1DB954';
+  ctx.fillRect(0, CH - 6, CW, 6);
+
+  // Watermark — centered in footer
+  ctx.fillStyle = '#2e2e24';
+  ctx.font = '400 22px "DM Sans",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Album Rater · sillymcwilly1.github.io/2026-Albums', CW/2, CH - SAFE_BOTTOM/2 + 10);
+  ctx.textAlign = 'left';
 }
-
 function downloadWeekCard() {
   const canvas = document.getElementById('weekCanvas');
   canvas.toBlob(function(blob) {
