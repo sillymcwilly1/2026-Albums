@@ -994,8 +994,9 @@ function drawWeekCard(d) {
   ctx.fillText('STARRED SONGS', PAD, LAYOUT.songsLabel.y+34);
 
   // Starred song rows — max 4, each 54px tall
-  const songRowH=54, maxStarred=Math.min(d.topStarred.length,4);
-  const songMaxW=CW-PAD*2-52;
+const songRowH=54, maxStarred=Math.min(d.topStarred.length,4);
+  const songTextStartX = PAD + 52;                      // where text actually begins
+  const songMaxW = CW - songTextStartX - PAD - 16;     // true available width to right edge
   if (maxStarred===0) {
     ctx.fillStyle='#3a3a2e'; ctx.font='italic 26px "DM Serif Display",serif';
     ctx.fillText('No starred songs this week', PAD, LAYOUT.songsRow.y+44);
@@ -1010,10 +1011,20 @@ function drawWeekCard(d) {
       ctx.fillText('★', PAD, sy+30);
       // Song name — with 🔥 if album was most played this week
       ctx.fillStyle='#f0efe8'; ctx.font='600 24px "DM Sans",sans-serif';
-      const songLabel = s.hotThisWeek ? '🔥 ' + s.song : s.song;
-      ctx.fillText(fitText(ctx, songLabel, songMaxW), PAD+40, sy+30);
+// Hot indicator — small filled green circle instead of emoji
+      if (s.hotThisWeek) {
+        ctx.fillStyle = '#1DB954';
+        ctx.beginPath();
+        ctx.arc(PAD + 40, sy + 24, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f0efe8';
+        ctx.fillText(fitText(ctx, s.song, songMaxW - 20), PAD + 52, sy + 30);
+      } else {
+        ctx.fillStyle = '#f0efe8';
+        ctx.fillText(fitText(ctx, s.song, songMaxW), PAD + 40, sy + 30);
+      }
       ctx.fillStyle='#5a5a4a'; ctx.font='400 20px "DM Sans",sans-serif';
-      ctx.fillText(fitText(ctx, s.artist+' · '+s.album, songMaxW), PAD+40, sy+52);
+ctx.fillText(fitText(ctx, s.artist + ' · ' + s.album, songMaxW), songTextStartX, sy + 52);
     }
   }
 
@@ -1036,7 +1047,8 @@ function drawWeekCard(d) {
     ctx.fillStyle=bGrad;
     roundRect(ctx,PAD,my,Math.max((CW-PAD*2)*pct,20),mpRowH,4); ctx.fill();
     ctx.fillStyle='#f0efe8'; ctx.font='600 22px "DM Sans",sans-serif';
-    ctx.fillText(fitText(ctx,name,CW-PAD*2-120), PAD+14, my+mpRowH*0.68);
+const mpTextMaxW = CW - PAD - 14 - PAD - 120;
+    ctx.fillText(fitText(ctx, name, mpTextMaxW), PAD+14, my+mpRowH*0.68);
     ctx.fillStyle='#1DB954'; ctx.font='700 22px "DM Sans",sans-serif';
     ctx.textAlign='right';
     ctx.fillText(mins+'m', CW-PAD, my+mpRowH*0.68);
