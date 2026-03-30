@@ -1135,3 +1135,4 @@ window.addEventListener('load', async function() {
   });
   loadRecentlyPlayed();
 });
+}
