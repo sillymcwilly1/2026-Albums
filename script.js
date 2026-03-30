@@ -1098,7 +1098,6 @@ for (let i = 0; i < maxSongs; i++) {
 
   // Green bottom edge
   ctx.fillStyle = '#1DB954'; ctx.fillRect(0, CH - 5, CW, 5);
-}
 
 function downloadWeekCard() {
   const canvas = document.getElementById('weekCanvas');
