@@ -973,12 +973,15 @@ miniLineChart(
   rule(ctx, PAD, Z.chartEnd - 1, CW - PAD * 2, '#2e2e24');
 
   // ── ZONE 6: Starred Songs (Z.songsStart – Z.songsEnd) ──
-  const songsAreaH = Z.songsEnd - Z.songsStart;
-  const maxSongs = Math.min(d.starredSongs.length, 6);
+const maxSongs = Math.min(d.starredSongs.length, 6);
 const cols = 2;
-const gap = 16;
+const gap = 18;
 const tileW = (CW - PAD * 2 - gap) / cols;
-const tileH = 120;
+const tileH = 130;
+
+ctx.fillStyle = '#3a3a2e';
+ctx.font = '600 18px "DM Sans", sans-serif';
+ctx.fillText('STARRED SONGS', PAD, Z.songsStart + 20);
 
 for (let i = 0; i < maxSongs; i++) {
   const sg = d.starredSongs[i];
@@ -988,6 +991,74 @@ for (let i = 0; i < maxSongs; i++) {
 
   const tx = PAD + col * (tileW + gap);
   const ty = Z.songsStart + 36 + row * (tileH + gap);
+
+  // --- Glow (depth layer)
+  const glow = ctx.createLinearGradient(tx, ty, tx, ty + tileH);
+  glow.addColorStop(0, 'rgba(29,185,84,0.08)');
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  rrect(ctx, tx, ty, tileW, tileH, 10);
+  ctx.fill();
+
+  // --- Card
+  ctx.fillStyle = '#12120f';
+  ctx.strokeStyle = '#2a2a1e';
+  ctx.lineWidth = 1;
+  rrect(ctx, tx, ty, tileW, tileH, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  // --- Left accent bar
+  ctx.fillStyle = '#1DB954';
+  rrect(ctx, tx, ty, 4, tileH, 2);
+  ctx.fill();
+
+  // --- Star icon
+  ctx.fillStyle = '#1DB954';
+  ctx.font = 'bold 20px "DM Sans", sans-serif';
+  ctx.fillText('★', tx + 14, ty + 30);
+
+  // --- Song title
+  ctx.fillStyle = '#f0efe8';
+  ctx.font = '600 24px "DM Sans", sans-serif';
+  ctx.fillText(
+    fit(ctx, sg.song, tileW - 28),
+    tx + 14,
+    ty + 56
+  );
+
+  // --- Artist + album
+  ctx.fillStyle = '#5a5a4a';
+  ctx.font = '400 18px "DM Sans", sans-serif';
+  ctx.fillText(
+    fit(ctx, sg.artist + ' · ' + sg.album, tileW - 28),
+    tx + 14,
+    ty + 84
+  );
+
+  // --- Minutes pill (clean + centered)
+  if (sg.mins > 0) {
+    const label = sg.mins + 'm';
+    ctx.font = '600 16px "DM Sans", sans-serif';
+    const textW = ctx.measureText(label).width;
+    const pillW = textW + 20;
+    const pillH = 26;
+
+    const px = tx + tileW - pillW - 12;
+    const py = ty + 12;
+
+    // pill bg
+    ctx.fillStyle = 'rgba(29,185,84,0.15)';
+    rrect(ctx, px, py, pillW, pillH, 6);
+    ctx.fill();
+
+    // text
+    ctx.fillStyle = '#1DB954';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, px + pillW / 2, py + 18);
+    ctx.textAlign = 'left';
+  }
+}
 
   // Tile background
   ctx.fillStyle = '#141410';
