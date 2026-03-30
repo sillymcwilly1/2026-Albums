@@ -991,7 +991,7 @@ for (let i = 0; i < maxSongs; i++) {
 
   const tx = PAD + col * (tileW + gap);
   const ty = Z.songsStart + 36 + row * (tileH + gap);
-}
+
   // --- Glow (depth layer)
   const glow = ctx.createLinearGradient(tx, ty, tx, ty + tileH);
   glow.addColorStop(0, 'rgba(29,185,84,0.08)');
@@ -1021,130 +1021,63 @@ for (let i = 0; i < maxSongs; i++) {
   // --- Song title
   ctx.fillStyle = '#f0efe8';
   ctx.font = '600 24px "DM Sans", sans-serif';
-  ctx.fillText(
-    fit(ctx, sg.song, tileW - 28),
-    tx + 14,
-    ty + 56
-  );
+  ctx.fillText(fit(ctx, sg.song, tileW - 28), tx + 14, ty + 56);
 
   // --- Artist + album
   ctx.fillStyle = '#5a5a4a';
   ctx.font = '400 18px "DM Sans", sans-serif';
-  ctx.fillText(
-    fit(ctx, sg.artist + ' · ' + sg.album, tileW - 28),
-    tx + 14,
-    ty + 84
-  );
+  ctx.fillText(fit(ctx, sg.artist + ' · ' + sg.album, tileW - 28), tx + 14, ty + 84);
 
-  // --- Minutes pill (clean + centered)
+  // --- Minutes pill (top-right)
   if (sg.mins > 0) {
     const label = sg.mins + 'm';
     ctx.font = '600 16px "DM Sans", sans-serif';
     const textW = ctx.measureText(label).width;
     const pillW = textW + 20;
     const pillH = 26;
-
     const px = tx + tileW - pillW - 12;
     const py = ty + 12;
 
-    // pill bg
     ctx.fillStyle = 'rgba(29,185,84,0.15)';
     rrect(ctx, px, py, pillW, pillH, 6);
     ctx.fill();
 
-    // text
     ctx.fillStyle = '#1DB954';
     ctx.textAlign = 'center';
     ctx.fillText(label, px + pillW / 2, py + 18);
     ctx.textAlign = 'left';
   }
-}
 
-  // Tile background
-  ctx.fillStyle = '#141410';
-  ctx.strokeStyle = '#2a2a1e';
-  ctx.lineWidth = 1;
-  rrect(ctx, tx, ty, tileW, tileH, 6);
-  ctx.fill();
-  ctx.stroke();
+  // --- Alternating row background (optional for list style)
+  if (i % 2 === 0) {
+    const ry = ty;           // row y-coordinate
+    const rowH = tileH;      // row height
+    ctx.fillStyle = 'rgba(29,185,84,0.035)';
+    rrect(ctx, PAD - 10, ry + 2, CW - PAD * 2 + 20, rowH - 4, 4);
+    ctx.fill();
+  }
 
-  // Star
-  ctx.fillStyle = '#1DB954';
-  ctx.font = 'bold 20px "DM Sans", sans-serif';
-  ctx.fillText('★', tx + 12, ty + 28);
-
-  // Song
-  ctx.fillStyle = '#f0efe8';
-  ctx.font = '600 22px "DM Sans", sans-serif';
-  ctx.fillText(
-    fit(ctx, sg.song, tileW - 24),
-    tx + 12,
-    ty + 52
-  );
-
-  // Artist / album
-  ctx.fillStyle = '#4a4a3a';
-  ctx.font = '400 18px "DM Sans", sans-serif';
-  ctx.fillText(
-    fit(ctx, sg.artist + ' · ' + sg.album, tileW - 24),
-    tx + 12,
-    ty + 78
-  );
-
-  // Minutes (top-right badge)
+  // --- Minutes badge for list rows (duplicate top-right pill)
   if (sg.mins > 0) {
-    const label = sg.mins + 'm';
-    const w = ctx.measureText(label).width + 16;
+    const ry = ty;
+    const rowH = tileH;
+    const minsLabel = sg.mins + 'm';
+    const minsW = ctx.measureText(minsLabel).width + 16;
+    const pillX = CW - PAD - minsW + 4;
+    const pillY = ry + rowH * 0.28;
+    const pillH = rowH * 0.42;
 
-    ctx.fillStyle = 'rgba(29,185,84,0.15)';
-    rrect(ctx, tx + tileW - w - 10, ty + 10, w, 26, 4);
+    ctx.fillStyle = 'rgba(29,185,84,0.12)';
+    rrect(ctx, pillX - 10, pillY, minsW + 2, pillH, 4);
     ctx.fill();
 
     ctx.fillStyle = '#1DB954';
-    ctx.font = '600 16px "DM Sans", sans-serif';
+    ctx.font = '600 20px "DM Sans", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(label, tx + tileW - w/2 - 10, ty + 28);
+    ctx.fillText(minsLabel, pillX - 10 + (minsW + 2) / 2, pillY + pillH * 0.68);
     ctx.textAlign = 'left';
-  
+  }
 }
-
-      // Alternating row bg
-      if (i % 2 === 0) {
-        ctx.fillStyle = 'rgba(29,185,84,0.035)';
-        rrect(ctx, PAD - 10, ry + 2, CW - PAD * 2 + 20, rowH - 4, 4); ctx.fill();
-      }
-
-      // Star indicator
-      ctx.fillStyle = '#1DB954'; ctx.font = 'bold 22px "DM Sans", sans-serif';
-      ctx.fillText('★', PAD, ry + rowH * 0.52);
-
-      // Song name — measured from actual start to actual end
-      const songX = PAD + 34;
-      const minsLabel = sg.mins > 0 ? sg.mins + 'm' : '';
-      const minsW = minsLabel ? ctx.measureText(minsLabel).width + 24 : 0;
-      const songMaxW = CW - songX - PAD - minsW - 8;
-
-      ctx.fillStyle = '#f0efe8'; ctx.font = '600 26px "DM Sans", sans-serif';
-      ctx.fillText(fit(ctx, sg.song, songMaxW), songX, ry + rowH * 0.46);
-
-      // Artist · album — smaller, muted
-      ctx.fillStyle = '#4a4a3a'; ctx.font = '400 20px "DM Sans", sans-serif';
-      const metaMaxW = CW - songX - PAD - minsW - 8;
-      ctx.fillText(fit(ctx, sg.artist + ' · ' + sg.album, metaMaxW), songX, ry + rowH * 0.78);
-
-      // Minutes counter — right-aligned green pill
-      if (minsLabel) {
-        const pillX = CW - PAD - minsW + 4;
-        const pillY = ry + rowH * 0.28;
-        const pillH = rowH * 0.42;
-        ctx.fillStyle = 'rgba(29,185,84,0.12)';
-        rrect(ctx, pillX - 10, pillY, minsW + 2, pillH, 4); ctx.fill();
-        ctx.fillStyle = '#1DB954'; ctx.font = '600 20px "DM Sans", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(minsLabel, pillX - 10 + (minsW + 2)/2, pillY + pillH * 0.68);
-        ctx.textAlign = 'left';
-      }
-
   // ── ZONE 7: MCM Footer (Z.footerStart – CH) ──
   ctx.fillStyle = '#080806';
   ctx.fillRect(0, Z.footerStart, CW, CH - Z.footerStart);
