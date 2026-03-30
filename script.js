@@ -477,9 +477,14 @@ async function loadRankings() {
 
 const CW = 1080, CH = 1920, PAD = 64;
 const Z = {
-  headerEnd: 130, titleEnd: 270, statsEnd: 410,
-  albumsEnd: 660, chartEnd: 940,
-  songsStart: 955, songsEnd: 1730, footerStart: 1730
+  headerEnd:   130,
+  titleEnd:    270,
+  statsEnd:    410,
+  albumsEnd:   700,
+  chartEnd:    1020,
+  songsStart:  1040,
+  songsEnd:    1730,
+  footerStart: 1730,
 };
 
 // ---- Color Sampling ----
