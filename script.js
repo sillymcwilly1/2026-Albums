@@ -4,6 +4,7 @@ const SUPABASE_URL = 'https://ybqombcywijvkkfedizc.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlicW9tYmN5d2lqdmtrZmVkaXpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTQ4MjksImV4cCI6MjA4Nzk5MDgyOX0.1ii1tJKgBy4Asubxb8Zgve5tLcCNFr6dUHK1qD19FVw';
 // =================================
 
+let replayLineInstance = null;
 let db = null;
 let spotifyToken = null;
 let currentAlbum = null;
