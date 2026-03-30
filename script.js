@@ -539,14 +539,14 @@ const PAD = 64;   // left/right margin
 
 // Zone boundaries — these are guaranteed safe
 const Z = {
-  headerEnd:   220,
-  titleEnd:    340,
-  statsEnd:    500,
-  albumsEnd:   760,
-  chartEnd:    1000,
-  songsStart:  1010,
-  songsEnd:    1680,
-  footerStart: 1680,
+headerEnd:   130,
+titleEnd:    260,
+statsEnd:    400,
+albumsEnd:   640,
+chartEnd:    920,
+songsStart:  940,
+songsEnd:    1720,
+footerStart: 1720,
 };
 
 // Strict text fit — binary search truncation
@@ -957,26 +957,85 @@ function drawCard(d) {
   ctx.fillStyle = '#3a3a2e'; ctx.font = '600 18px "DM Sans", sans-serif';
   ctx.fillText('PLAY TIMELINE — MINUTES PER DAY', PAD, chartY + 16);
 
-  miniLineChart(ctx, PAD, chartY + 24, CW - PAD * 2, Z.chartEnd - chartY - 32,
-    d.byDate, d.top5forChart, d.lineColors);
+const chartHeight = Z.chartEnd - chartY - 60;
+
+miniLineChart(
+  ctx,
+  PAD,
+  chartY + 36,
+  CW - PAD * 2,
+  chartHeight,
+  d.byDate,
+  d.top5forChart,
+  d.lineColors
+);
 
   rule(ctx, PAD, Z.chartEnd - 1, CW - PAD * 2, '#2e2e24');
 
   // ── ZONE 6: Starred Songs (Z.songsStart – Z.songsEnd) ──
   const songsAreaH = Z.songsEnd - Z.songsStart;
   const maxSongs = Math.min(d.starredSongs.length, 6);
-  const rowH = maxSongs > 0 ? Math.floor((songsAreaH - 36) / maxSongs) : 80;
+const cols = 2;
+const gap = 16;
+const tileW = (CW - PAD * 2 - gap) / cols;
+const tileH = 120;
 
-  ctx.fillStyle = '#3a3a2e'; ctx.font = '600 18px "DM Sans", sans-serif';
-  ctx.fillText('STARRED SONGS', PAD, Z.songsStart + 20);
+for (let i = 0; i < maxSongs; i++) {
+  const sg = d.starredSongs[i];
 
-  if (maxSongs === 0) {
-    ctx.fillStyle = '#2e2e24'; ctx.font = 'italic 26px Georgia, serif';
-    ctx.fillText('No starred songs this week', PAD, Z.songsStart + 70);
-  } else {
-    for (let i = 0; i < maxSongs; i++) {
-      const sg = d.starredSongs[i];
-      const ry = Z.songsStart + 32 + i * rowH;
+  const col = i % cols;
+  const row = Math.floor(i / cols);
+
+  const tx = PAD + col * (tileW + gap);
+  const ty = Z.songsStart + 36 + row * (tileH + gap);
+
+  // Tile background
+  ctx.fillStyle = '#141410';
+  ctx.strokeStyle = '#2a2a1e';
+  ctx.lineWidth = 1;
+  rrect(ctx, tx, ty, tileW, tileH, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Star
+  ctx.fillStyle = '#1DB954';
+  ctx.font = 'bold 20px "DM Sans", sans-serif';
+  ctx.fillText('★', tx + 12, ty + 28);
+
+  // Song
+  ctx.fillStyle = '#f0efe8';
+  ctx.font = '600 22px "DM Sans", sans-serif';
+  ctx.fillText(
+    fit(ctx, sg.song, tileW - 24),
+    tx + 12,
+    ty + 52
+  );
+
+  // Artist / album
+  ctx.fillStyle = '#4a4a3a';
+  ctx.font = '400 18px "DM Sans", sans-serif';
+  ctx.fillText(
+    fit(ctx, sg.artist + ' · ' + sg.album, tileW - 24),
+    tx + 12,
+    ty + 78
+  );
+
+  // Minutes (top-right badge)
+  if (sg.mins > 0) {
+    const label = sg.mins + 'm';
+    const w = ctx.measureText(label).width + 16;
+
+    ctx.fillStyle = 'rgba(29,185,84,0.15)';
+    rrect(ctx, tx + tileW - w - 10, ty + 10, w, 26, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#1DB954';
+    ctx.font = '600 16px "DM Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, tx + tileW - w/2 - 10, ty + 28);
+    ctx.textAlign = 'left';
+  }
+}
 
       // Alternating row bg
       if (i % 2 === 0) {
