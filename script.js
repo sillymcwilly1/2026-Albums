@@ -668,10 +668,10 @@ function miniLineChart(ctx, x, y, w, h, byDate, albums, colors) {
 
   // Lines
   albums.forEach(function(album, ai) {
-    const pts = dates.map(function(d, i) ({
-      px: x + pL + (i / Math.max(dates.length - 1, 1)) * cw,
-      py: y + pT + ch * (1 - ((byDate[d] && byDate[d][album]) || 0) / maxVal)
-    }));
+ const pts = dates.map((d, i) => ({
+  px: x + pL + (i / Math.max(dates.length - 1, 1)) * cw,
+  py: y + pT + ch * (1 - ((byDate[d] && byDate[d][album]) || 0) / maxVal)
+}));
 
     // Area
     ctx.beginPath();
