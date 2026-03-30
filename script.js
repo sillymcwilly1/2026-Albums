@@ -1105,7 +1105,7 @@ for (let i = 0; i < maxSongs; i++) {
     ctx.textAlign = 'center';
     ctx.fillText(label, tx + tileW - w/2 - 10, ty + 28);
     ctx.textAlign = 'left';
-  }
+  
 }
 
       // Alternating row bg
