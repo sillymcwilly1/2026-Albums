@@ -1144,7 +1144,6 @@ for (let i = 0; i < maxSongs; i++) {
         ctx.fillText(minsLabel, pillX - 10 + (minsW + 2)/2, pillY + pillH * 0.68);
         ctx.textAlign = 'left';
       }
-    
 
   // ── ZONE 7: MCM Footer (Z.footerStart – CH) ──
   ctx.fillStyle = '#080806';
