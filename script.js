@@ -1074,7 +1074,6 @@ for (let i = 0; i < maxSongs; i++) {
         ctx.textAlign = 'left';
       }
     }
-  }
 
   // ── ZONE 7: MCM Footer (Z.footerStart – CH) ──
   ctx.fillStyle = '#080806';
