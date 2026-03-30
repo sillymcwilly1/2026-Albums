@@ -991,7 +991,7 @@ for (let i = 0; i < maxSongs; i++) {
 
   const tx = PAD + col * (tileW + gap);
   const ty = Z.songsStart + 36 + row * (tileH + gap);
-
+}
   // --- Glow (depth layer)
   const glow = ctx.createLinearGradient(tx, ty, tx, ty + tileH);
   glow.addColorStop(0, 'rgba(29,185,84,0.08)');
