@@ -480,7 +480,7 @@ const Z = {
   headerEnd:   130,
   titleEnd:    270,
   statsEnd:    410,
-  albumsEnd:   700,
+  albumsEnd:   720,
   chartEnd:    1020,
   songsStart:  1040,
   songsEnd:    1730,
@@ -595,22 +595,40 @@ function rule(ctx, x, y, w, color) {
 function miniLineChart(ctx, x, y, w, h, byDate, albums, colors) {
   const dates = Object.keys(byDate).sort();
   if (dates.length < 2) {
-    ctx.fillStyle = '#3a3a2e'; ctx.font = 'italic 24px Georgia, serif'; ctx.textAlign = 'center';
-    ctx.fillText('Not enough data yet', x+w/2, y+h/2); ctx.textAlign = 'left'; return;
+    ctx.fillStyle = '#3a3a2e'; ctx.font = 'italic 24px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Not enough data yet', x+w/2, y+h/2);
+    ctx.textAlign = 'left'; return;
   }
-  let maxVal = 0;
-  dates.forEach(function(d) { albums.forEach(function(a) { maxVal = Math.max(maxVal, (byDate[d]&&byDate[d][a])||0); }); });
-  if (maxVal === 0) maxVal = 1;
-  const pL=52, pR=20, pT=12, pB=30, cw=w-pL-pR, ch=h-pT-pB;
-  ctx.strokeStyle = '#2a2a1e'; ctx.lineWidth = 1;
-  [0,0.5,1].forEach(function(pct) {
+
+  // Find true max and round up to a clean ceiling with 20% headroom
+  let rawMax = 0;
+  dates.forEach(function(d) {
+    albums.forEach(function(a) { rawMax = Math.max(rawMax, (byDate[d]&&byDate[d][a])||0); });
+  });
+  if (rawMax === 0) rawMax = 1;
+  // Round up to nearest 10 with 20% headroom so lines never touch top
+  const maxVal = Math.ceil((rawMax * 1.2) / 10) * 10;
+
+  const pL=60, pR=20, pT=16, pB=34;
+  const cw=w-pL-pR, ch=h-pT-pB;
+
+  // Draw 4 grid lines at 0%, 33%, 66%, 100%
+  [0, 0.33, 0.66, 1].forEach(function(pct) {
     const gy = y+pT+ch*(1-pct);
+    ctx.strokeStyle = '#2a2a1e'; ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(x+pL,gy); ctx.lineTo(x+pL+cw,gy); ctx.stroke();
-    if (pct > 0) {
-      ctx.fillStyle = '#3a3a2e'; ctx.font = '20px "DM Sans",sans-serif'; ctx.textAlign = 'right';
-      ctx.fillText(Math.round(maxVal*pct)+'m', x+pL-6, gy+7); ctx.textAlign = 'left';
+    // Y label — only show if value > 0
+    const labelVal = Math.round(maxVal*pct);
+    if (labelVal > 0) {
+      ctx.fillStyle = '#3a3a2e'; ctx.font = '18px "DM Sans",sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(labelVal+'m', x+pL-8, gy+6);
+      ctx.textAlign = 'left';
     }
   });
+
+  // X labels — Mondays only, never crowded
   ctx.fillStyle = '#3a3a2e'; ctx.font = '18px "DM Sans",sans-serif'; ctx.textAlign = 'center';
   dates.forEach(function(d, i) {
     const dt = new Date(d+'T00:00:00');
@@ -620,31 +638,45 @@ function miniLineChart(ctx, x, y, w, h, byDate, albums, colors) {
     }
   });
   ctx.textAlign = 'left';
+
+  // Draw area fills first, then lines on top
   albums.forEach(function(album, ai) {
     const pts = dates.map(function(d, i) {
-      return { px: x+pL+(i/Math.max(dates.length-1,1))*cw, py: y+pT+ch*(1-((byDate[d]&&byDate[d][album])||0)/maxVal) };
+      const v = ((byDate[d]&&byDate[d][album])||0);
+      return { px: x+pL+(i/Math.max(dates.length-1,1))*cw, py: y+pT+ch*(1-v/maxVal) };
     });
     ctx.beginPath(); ctx.moveTo(pts[0].px, y+pT+ch);
     pts.forEach(function(p) { ctx.lineTo(p.px, p.py); });
     ctx.lineTo(pts[pts.length-1].px, y+pT+ch); ctx.closePath();
-    ctx.fillStyle = colors[ai]+'15'; ctx.fill();
+    ctx.fillStyle = colors[ai]+'12'; ctx.fill();
+  });
+
+  albums.forEach(function(album, ai) {
+    const pts = dates.map(function(d, i) {
+      const v = ((byDate[d]&&byDate[d][album])||0);
+      return { px: x+pL+(i/Math.max(dates.length-1,1))*cw, py: y+pT+ch*(1-v/maxVal) };
+    });
     ctx.beginPath(); ctx.strokeStyle = colors[ai]; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
     ctx.moveTo(pts[0].px, pts[0].py);
-    for (let i = 1; i < pts.length; i++) {
-      const cpx = (pts[i-1].px+pts[i].px)/2;
-      ctx.bezierCurveTo(cpx, pts[i-1].py, cpx, pts[i].py, pts[i].px, pts[i].py);
+    for (let i=1; i<pts.length; i++) {
+      const cpx=(pts[i-1].px+pts[i].px)/2;
+      ctx.bezierCurveTo(cpx,pts[i-1].py,cpx,pts[i].py,pts[i].px,pts[i].py);
     }
     ctx.stroke();
     pts.forEach(function(p) {
-      ctx.beginPath(); ctx.arc(p.px, p.py, 3.5, 0, Math.PI*2); ctx.fillStyle = colors[ai]; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.px,p.py,3.5,0,Math.PI*2);
+      ctx.fillStyle=colors[ai]; ctx.fill();
     });
   });
-  let ly = y+pT+4;
+
+  // Legend — stacked top right inside chart
+  let ly = y+pT+6;
   albums.forEach(function(album, ai) {
-    const lx = x+pL+cw-10;
-    ctx.fillStyle = colors[ai]; ctx.fillRect(lx-218, ly+1, 14, 3);
+    const lx = x+pL+cw;
+    ctx.fillStyle = colors[ai]; ctx.fillRect(lx-210, ly+2, 14, 3);
     ctx.font = '17px "DM Sans",sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText(fit(ctx, album, 200), lx-198, ly+11); ly += 24;
+    ctx.fillText(fit(ctx, album, 190), lx-190, ly+12);
+    ly += 26;
   });
 }
 
@@ -730,7 +762,8 @@ async function generateWeekReview() {
     startDate, endDate, top3, artImages, totalMins, avgScore,
     totalRated: weekRatings.length, totalStarred, starredSongs,
     byDate, top5forChart, lineColors,
-    blended, accentColors
+    blended, accentColors,
+    albumMinsMap: albumMins
   });
   document.getElementById('week-output').classList.remove('hidden');
 }
@@ -887,7 +920,12 @@ function drawCard(d) {
       const rw = ctx.measureText(rs).width;
       ctx.fillStyle = '#3a3a2e'; ctx.font = '400 17px "DM Sans",sans-serif';
       ctx.fillText('/ 10', tx+rw+5, ty+52);
-    }
+      // Minutes listened this week under rating
+      const albumMinsThisCard = d.albumMinsMap ? (d.albumMinsMap[r.albums.name] || 0) : 0;
+      if (albumMinsThisCard > 0) {
+        ctx.fillStyle = toRgb(cardAccent, 0.5); ctx.font = '400 15px "DM Sans",sans-serif';
+        ctx.fillText(albumMinsThisCard + ' min this week', tx, ty+75);
+      }
   }
 
   rule(ctx, PAD, Z.albumsEnd-1, CW-PAD*2, '#2e2e24');
@@ -900,105 +938,85 @@ function drawCard(d) {
 
   rule(ctx, PAD, Z.chartEnd-1, CW-PAD*2, '#2e2e24');
 
-  // ── ZONE 6: Starred Songs — Floating Pill Tiles ──
+// ── ZONE 6: Starred Songs — 2-col floating pill tiles ──
   ctx.fillStyle = toRgb(accent, 0.4); ctx.font = '600 17px "DM Sans",sans-serif';
-  ctx.fillText('STARRED SONGS', PAD, Z.songsStart+20);
+  ctx.fillText('STARRED SONGS', PAD, Z.songsStart+24);
 
-  const maxSongs = Math.min(d.starredSongs.length, 8);
-  const songsAreaH = Z.songsEnd - Z.songsStart - 36;
+  const maxSongs = Math.min(d.starredSongs.length, 12);
+  const songsAreaH = Z.songsEnd - Z.songsStart - 40;
 
   if (maxSongs === 0) {
     ctx.fillStyle = '#2e2e24'; ctx.font = 'italic 26px Georgia,serif';
     ctx.fillText('No starred songs this week', PAD, Z.songsStart+70);
   } else {
-    // Pill tile layout:
-    // Tiles have a fixed height of 90px. They stack with slight vertical overlap
-    // and a small random-looking (but deterministic) horizontal offset based on index.
-    // Each tile's left border color cycles through the per-album accent colors.
-    const tileH = 90;
-    const tileW = CW - PAD*2;
-    const overlap = maxSongs > 4 ? 14 : 8; // more overlap when more songs
-    const totalStackH = tileH + (maxSongs-1)*(tileH - overlap);
-    // Center the stack vertically in the songs zone
-    const stackTopY = Z.songsStart + 36 + Math.max(0, (songsAreaH - totalStackH) / 2);
+    const cols = 2;
+    const tileGap = 14;
+    const colW = Math.floor((CW - PAD*2 - tileGap) / cols);
+    const numRows = Math.ceil(maxSongs / cols);
+    // Tile height fits all rows cleanly in the zone
+    const tileH = Math.min(88, Math.floor((songsAreaH - tileGap*(numRows-1)) / numRows));
+    const overlap = numRows > 4 ? 8 : 0; // slight overlap only when dense
 
-    // Deterministic horizontal jitter — small, tasteful
-    const jitters = [-12, 8, -6, 14, -10, 6, -14, 10];
+    // Jitter per column — left col goes left, right col goes right
+    const colJitter = [-10, 8];
 
     for (let i = 0; i < maxSongs; i++) {
       const sg = d.starredSongs[i];
-      const tileY = stackTopY + i*(tileH - overlap);
-      const jitter = jitters[i % jitters.length];
-      const tileX = PAD + jitter;
-      const tileActualW = tileW - Math.abs(jitter);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
 
-      // Tile border color — cycles through album accent colors
-      const tileAccent = d.accentColors[i % d.accentColors.length] || accent;
+      const tileX = PAD + col*(colW+tileGap) + colJitter[col];
+      const tileY = Z.songsStart + 38 + row*(tileH+tileGap - overlap);
+      const tileActualW = colW - Math.abs(colJitter[col]);
+      const tileAccent = d.accentColors[i % Math.max(d.accentColors.length,1)] || accent;
       const tileAccentBright = lighten(tileAccent, 0.15);
 
-      // Shadow / depth layer beneath tile
+      // Shadow layer
       ctx.save();
-      ctx.shadowColor = toRgb(tileAccent, 0.2);
-      ctx.shadowBlur = 16;
-      ctx.shadowOffsetY = 4;
+      ctx.shadowColor = toRgb(tileAccent, 0.15);
+      ctx.shadowBlur = 12; ctx.shadowOffsetY = 3;
 
-      // Tile background
+      // Tile background — pill shape
       ctx.fillStyle = '#111110';
-      rrect(ctx, tileX, tileY, tileActualW, tileH, 44); // high radius = pill
-      ctx.fill();
-      ctx.restore();
+      rrect(ctx, tileX, tileY, tileActualW, tileH, tileH/2);
+      ctx.fill(); ctx.restore();
 
-      // Tile border
-      ctx.strokeStyle = toRgb(tileAccentBright, 0.22);
-      ctx.lineWidth = 1;
-      rrect(ctx, tileX, tileY, tileActualW, tileH, 44);
-      ctx.stroke();
+      // Border
+      ctx.strokeStyle = toRgb(tileAccentBright, 0.2); ctx.lineWidth = 1;
+      rrect(ctx, tileX, tileY, tileActualW, tileH, tileH/2); ctx.stroke();
 
-      // Subtle color wash inside tile
+      // Color wash
       const tileWash = ctx.createLinearGradient(tileX, tileY, tileX+tileActualW, tileY);
       tileWash.addColorStop(0, toRgb(tileAccent, 0.1));
-      tileWash.addColorStop(0.4, toRgb(tileAccent, 0.03));
+      tileWash.addColorStop(0.5, toRgb(tileAccent, 0.02));
       tileWash.addColorStop(1, 'transparent');
       ctx.fillStyle = tileWash;
-      rrect(ctx, tileX, tileY, tileActualW, tileH, 44); ctx.fill();
+      rrect(ctx, tileX, tileY, tileActualW, tileH, tileH/2); ctx.fill();
 
-      // Bold left border — the pill's "accent stripe" as a circle cap
+      // Circular cap
+      const capR = tileH/2;
       ctx.fillStyle = toRgb(tileAccent);
-      ctx.beginPath(); ctx.arc(tileX+44, tileY+tileH/2, tileH/2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(tileX+capR, tileY+capR, capR, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#000'; ctx.font = 'bold ' + Math.round(tileH*0.28) + 'px "DM Sans",sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('★', tileX+capR, tileY+capR+Math.round(tileH*0.1));
+      ctx.textAlign = 'left';
 
-      // Star on the cap
-      ctx.fillStyle = '#000'; ctx.font = 'bold 22px "DM Sans",sans-serif';
-      ctx.textAlign = 'center'; ctx.fillText('★', tileX+44, tileY+tileH/2+8); ctx.textAlign = 'left';
+      // Text — measured against available width
+      const textX = tileX + capR*2 + 10;
+      const textMaxW = tileActualW - capR*2 - 18;
+      const songFontSz = tileH > 70 ? 22 : 18;
+      const metaFontSz = tileH > 70 ? 18 : 15;
 
-      // Song name
-      const textX = tileX + 44 + tileH/2 + 12;
-      const textMaxW = tileActualW - (44 + tileH/2 + 12) - (sg.mins > 0 ? 90 : 20);
-      ctx.fillStyle = '#f0efe8'; ctx.font = '600 26px "DM Sans",sans-serif';
+      ctx.fillStyle = '#f0efe8';
+      ctx.font = '600 ' + songFontSz + 'px "DM Sans",sans-serif';
       ctx.fillText(fit(ctx, sg.song, textMaxW), textX, tileY + tileH*0.44);
 
-      // Artist · album
-      ctx.fillStyle = toRgb(tileAccent, 0.65); ctx.font = '400 19px "DM Sans",sans-serif';
-      const metaMaxW = tileActualW - (44 + tileH/2 + 12) - (sg.mins > 0 ? 90 : 20);
-      ctx.fillText(fit(ctx, sg.artist + ' · ' + sg.album, metaMaxW), textX, tileY + tileH*0.74);
-
-      // Minutes pill — right side
-      if (sg.mins > 0) {
-        const label = sg.mins + 'm';
-        ctx.font = '600 18px "DM Sans",sans-serif';
-        const pillW = ctx.measureText(label).width + 20;
-        const pillH = 30;
-        const px = tileX + tileActualW - pillW - 20;
-        const py = tileY + (tileH - pillH)/2;
-        ctx.fillStyle = toRgb(tileAccent, 0.18);
-        rrect(ctx, px, py, pillW, pillH, 15); ctx.fill();
-        ctx.strokeStyle = toRgb(tileAccent, 0.35); ctx.lineWidth = 1;
-        rrect(ctx, px, py, pillW, pillH, 15); ctx.stroke();
-        ctx.fillStyle = toRgb(tileAccentBright);
-        ctx.textAlign = 'center'; ctx.fillText(label, px+pillW/2, py+20); ctx.textAlign = 'left';
-      }
+      ctx.fillStyle = toRgb(tileAccent, 0.65);
+      ctx.font = '400 ' + metaFontSz + 'px "DM Sans",sans-serif';
+      ctx.fillText(fit(ctx, sg.artist + ' · ' + sg.album, textMaxW), textX, tileY + tileH*0.74);
     }
   }
-
   // ── ZONE 7: MCM Footer ──
   ctx.fillStyle = '#06060490'; ctx.fillRect(0, Z.footerStart, CW, CH-Z.footerStart);
 
