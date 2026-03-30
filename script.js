@@ -43,11 +43,9 @@ function loginSpotify() {
   localStorage.setItem('code_verifier', codeVerifier);
   generateCodeChallenge(codeVerifier).then(function(codeChallenge) {
     window.location.href = 'https://accounts.spotify.com/authorize?client_id=' + SPOTIFY_CLIENT_ID +
-      '&response_type=code' +
-      '&redirect_uri=' + redirectUri +
+      '&response_type=code&redirect_uri=' + redirectUri +
       '&scope=' + scopes +
-      '&code_challenge_method=S256' +
-      '&code_challenge=' + codeChallenge;
+      '&code_challenge_method=S256&code_challenge=' + codeChallenge;
   });
 }
 
@@ -61,11 +59,8 @@ async function handleSpotifyCallback() {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code: code,
-      redirect_uri: redirectUri,
-      client_id: SPOTIFY_CLIENT_ID,
-      code_verifier: codeVerifier
+      grant_type: 'authorization_code', code, redirect_uri: redirectUri,
+      client_id: SPOTIFY_CLIENT_ID, code_verifier: codeVerifier
     })
   });
   const tokenData = await response.json();
@@ -81,9 +76,7 @@ function saveTokens(tokenData) {
   spotifyToken = tokenData.access_token;
   localStorage.setItem('spotify_token', tokenData.access_token);
   localStorage.setItem('spotify_token_time', Date.now());
-  if (tokenData.refresh_token) {
-    localStorage.setItem('spotify_refresh_token', tokenData.refresh_token);
-  }
+  if (tokenData.refresh_token) localStorage.setItem('spotify_refresh_token', tokenData.refresh_token);
 }
 
 async function refreshSpotifyToken() {
@@ -93,15 +86,12 @@ async function refreshSpotifyToken() {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: SPOTIFY_CLIENT_ID
+      grant_type: 'refresh_token', refresh_token: refreshToken, client_id: SPOTIFY_CLIENT_ID
     })
   });
   const tokenData = await response.json();
   if (tokenData.access_token) { saveTokens(tokenData); return true; }
-  loginSpotify();
-  return false;
+  loginSpotify(); return false;
 }
 
 async function spotifyFetch(url) {
@@ -187,12 +177,10 @@ async function logPlays(items) {
     const duration = item.track.duration_ms || 0;
     if (!albumMap[album.id]) {
       albumMap[album.id] = {
-        spotify_album_id: album.id,
-        album_name: album.name,
+        spotify_album_id: album.id, album_name: album.name,
         artist: album.artists && album.artists[0] ? album.artists[0].name : '',
         image_url: album.images && album.images[0] ? album.images[0].url : '',
-        duration_ms: 0,
-        logged_at: new Date().toISOString()
+        duration_ms: 0, logged_at: new Date().toISOString()
       };
     }
     albumMap[album.id].duration_ms += duration;
@@ -206,17 +194,14 @@ async function logPlays(items) {
 
 // ---- Replay Tracker ----
 async function loadReplayTracker() {
-  let allLogs = [];
-  let page = 0;
-  const pageSize = 1000;
+  let allLogs = [], page = 0;
   while (true) {
-    const { data, error } = await db.from('play_logs')
-      .select('*')
+    const { data, error } = await db.from('play_logs').select('*')
       .order('logged_at', { ascending: true })
-      .range(page * pageSize, (page + 1) * pageSize - 1);
+      .range(page * 1000, (page + 1) * 1000 - 1);
     if (error || !data || data.length === 0) break;
     allLogs = allLogs.concat(data);
-    if (data.length < pageSize) break;
+    if (data.length < 1000) break;
     page++;
   }
   if (allLogs.length === 0) {
@@ -297,7 +282,7 @@ function renderReplayLine(logs) {
   const ctx = document.getElementById('replayLineChart').getContext('2d');
   replayLineInstance = new Chart(ctx, {
     type: 'line',
-    data: { labels: dates, datasets: datasets },
+    data: { labels: dates, datasets },
     options: {
       responsive: true,
       plugins: {
@@ -311,8 +296,7 @@ function renderReplayLine(logs) {
       scales: {
         x: {
           ticks: {
-            color: '#5a5a4a', font: { size: 10, family: 'DM Sans' },
-            maxRotation: 0, autoSkip: false,
+            color: '#5a5a4a', font: { size: 10, family: 'DM Sans' }, maxRotation: 0, autoSkip: false,
             callback: function(val, index) {
               const date = dates[index];
               if (!date) return '';
@@ -341,11 +325,7 @@ async function searchAlbums() {
   const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=album&limit=10', {
     headers: { Authorization: 'Bearer ' + token }
   });
-  if (res.status === 401) {
-    const refreshed = await refreshSpotifyToken();
-    if (!refreshed) { loginSpotify(); return; }
-    return searchAlbums();
-  }
+  if (res.status === 401) { const r = await refreshSpotifyToken(); if (!r) { loginSpotify(); return; } return searchAlbums(); }
   if (!res.ok) { alert('Search failed — please try again.'); return; }
   const data = await res.json();
   if (!data.albums || !data.albums.items) { alert('No results found.'); return; }
@@ -359,9 +339,7 @@ async function searchAlbums() {
     const img = album.images&&album.images[0]?album.images[0].url:'';
     const artist = album.artists&&album.artists[0]?album.artists[0].name:'';
     const badge = ratedMap[album.id]!==undefined?'<span class="rating-badge">'+ratedMap[album.id]+'/10</span>':'';
-    return '<div class="album-card" onclick="openAlbum(\''+album.id+'\')">'+
-      '<img src="'+img+'" alt="'+album.name+'" />'+
-      '<div class="album-card-info"><h3>'+album.name+'</h3><p>'+artist+'</p>'+badge+'</div></div>';
+    return '<div class="album-card" onclick="openAlbum(\''+album.id+'\')"><img src="'+img+'" alt="'+album.name+'" /><div class="album-card-info"><h3>'+album.name+'</h3><p>'+artist+'</p>'+badge+'</div></div>';
   }).join('');
 }
 
@@ -375,38 +353,26 @@ async function openAlbum(spotifyId) {
     spotifyFetch('https://api.spotify.com/v1/albums/' + spotifyId + '/tracks?limit=50')
   ]);
   if (!album || !tracksData) return;
-  currentAlbum = album;
-  currentTracks = tracksData.items;
-  selectedTracks = [];
-  existingRating = null;
+  currentAlbum = album; currentTracks = tracksData.items; selectedTracks = []; existingRating = null;
   const { data: existing } = await db.from('albums').select('id, ratings(*)').eq('spotify_id', spotifyId).single();
   let ratingVal = '', commentVal = '';
   if (existing && existing.ratings && existing.ratings.length > 0) {
     existingRating = existing.ratings[0];
-    ratingVal = existingRating.rating;
-    commentVal = existingRating.comments || '';
+    ratingVal = existingRating.rating; commentVal = existingRating.comments || '';
     selectedTracks = existingRating.top_songs || [];
   }
   const tracksHTML = currentTracks.map(function(t, i) {
     const isSelected = selectedTracks.includes(t.name);
     const safeName = t.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return '<div class="track-item '+(isSelected?'selected':'')+'" onclick="toggleTrack(\''+safeName+'\', this)">'+
-      '<span class="track-check">'+(isSelected?'★':'☆')+'</span>'+
-      '<span>'+(i+1)+'. '+t.name+'</span></div>';
+    return '<div class="track-item '+(isSelected?'selected':'')+'" onclick="toggleTrack(\''+safeName+'\', this)"><span class="track-check">'+(isSelected?'★':'☆')+'</span><span>'+(i+1)+'. '+t.name+'</span></div>';
   }).join('');
   const year = album.release_date ? album.release_date.split('-')[0] : '';
   const artistName = album.artists && album.artists[0] ? album.artists[0].name : '';
   document.getElementById('modal-body').innerHTML =
-    '<div class="modal-album-header">'+
-    '<img src="'+(album.images&&album.images[0]?album.images[0].url:'')+'" alt="'+album.name+'" />'+
-    '<div><h2>'+album.name+'</h2><p>'+artistName+'</p>'+
-    '<p style="color:var(--text-muted);font-size:0.76rem;margin-top:4px">'+year+'</p></div></div>'+
-    '<label>Rating (0–10)</label>'+
-    '<input type="number" id="rating-input" min="0" max="10" step="0.1" value="'+ratingVal+'" placeholder="e.g. 8.5" />'+
-    '<label>Comments</label>'+
-    '<textarea id="comment-input" placeholder="Write your thoughts…">'+commentVal+'</textarea>'+
-    '<label>Top Songs</label>'+
-    '<div class="tracks-list">'+tracksHTML+'</div>'+
+    '<div class="modal-album-header"><img src="'+(album.images&&album.images[0]?album.images[0].url:'')+'" alt="'+album.name+'" /><div><h2>'+album.name+'</h2><p>'+artistName+'</p><p style="color:var(--text-muted);font-size:0.76rem;margin-top:4px">'+year+'</p></div></div>'+
+    '<label>Rating (0–10)</label><input type="number" id="rating-input" min="0" max="10" step="0.1" value="'+ratingVal+'" placeholder="e.g. 8.5" />'+
+    '<label>Comments</label><textarea id="comment-input" placeholder="Write your thoughts…">'+commentVal+'</textarea>'+
+    '<label>Top Songs</label><div class="tracks-list">'+tracksHTML+'</div>'+
     '<button class="save-btn" onclick="saveRating(\''+spotifyId+'\')">Save Rating</button>';
   document.getElementById('modal').classList.remove('hidden');
 }
@@ -414,12 +380,9 @@ async function openAlbum(spotifyId) {
 function toggleTrack(name, el) {
   if (selectedTracks.includes(name)) {
     selectedTracks = selectedTracks.filter(function(t) { return t !== name; });
-    el.classList.remove('selected');
-    el.querySelector('.track-check').textContent = '☆';
+    el.classList.remove('selected'); el.querySelector('.track-check').textContent = '☆';
   } else {
-    selectedTracks.push(name);
-    el.classList.add('selected');
-    el.querySelector('.track-check').textContent = '★';
+    selectedTracks.push(name); el.classList.add('selected'); el.querySelector('.track-check').textContent = '★';
   }
 }
 
@@ -431,8 +394,7 @@ async function saveRating(spotifyId) {
   const comments = document.getElementById('comment-input').value;
   if (isNaN(rating) || rating < 0 || rating > 10) { alert('Please enter a rating between 0 and 10'); return; }
   const { data: albumRow } = await db.from('albums').upsert({
-    spotify_id: spotifyId,
-    name: currentAlbum.name,
+    spotify_id: spotifyId, name: currentAlbum.name,
     artist: currentAlbum.artists[0] ? currentAlbum.artists[0].name : '',
     image_url: currentAlbum.images && currentAlbum.images[0] ? currentAlbum.images[0].url : '',
     release_year: currentAlbum.release_date ? currentAlbum.release_date.split('-')[0] : ''
@@ -442,34 +404,25 @@ async function saveRating(spotifyId) {
   } else {
     await db.from('ratings').insert({ album_id: albumRow.id, rating, comments, top_songs: selectedTracks });
   }
-  closeModal();
-  alert('Rating saved! ✅');
+  closeModal(); alert('Rating saved! ✅');
 }
 
 // ---- Bar Chart ----
 function renderBarChart(data) {
   const sorted = [...data].sort(function(a,b) { return b.rating-a.rating; });
   function ratingToColor(v) {
-    if (v >= 9.5) return '#1fef6a';
-    if (v >= 9)   return '#1DB954';
-    if (v >= 8)   return '#19a348';
-    if (v >= 7)   return '#148d3c';
-    if (v >= 6)   return '#0f7731';
-    if (v >= 5)   return '#0b6128';
-    if (v >= 4)   return '#074b1e';
-    if (v >= 3)   return '#053a17';
-    if (v >= 2)   return '#032a10';
+    if (v >= 9.5) return '#1fef6a'; if (v >= 9) return '#1DB954'; if (v >= 8) return '#19a348';
+    if (v >= 7) return '#148d3c'; if (v >= 6) return '#0f7731'; if (v >= 5) return '#0b6128';
+    if (v >= 4) return '#074b1e'; if (v >= 3) return '#053a17'; if (v >= 2) return '#032a10';
     return '#021a0a';
   }
   const labels = sorted.map(function(r) { const n=r.albums.name; return n.length>16?n.substring(0,16)+'…':n; });
   const values = sorted.map(function(r) { return r.rating; });
-  const colors = values.map(ratingToColor);
-  const borderColors = values.map(function(v) { return v>=7?'rgba(29,185,84,0.4)':'rgba(29,185,84,0.1)'; });
   if (barChartInstance) barChartInstance.destroy();
   const ctx = document.getElementById('barChart').getContext('2d');
   barChartInstance = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: borderColors, borderWidth: 1, borderRadius: 3, borderSkipped: false }] },
+    data: { labels, datasets: [{ data: values, backgroundColor: values.map(ratingToColor), borderColor: values.map(function(v){return v>=7?'rgba(29,185,84,0.4)':'rgba(29,185,84,0.1)';}), borderWidth: 1, borderRadius: 3, borderSkipped: false }] },
     options: {
       responsive: true,
       plugins: {
@@ -496,56 +449,86 @@ function renderBarChart(data) {
 async function loadRankings() {
   const { data } = await db.from('ratings').select('*, albums(*)').order('rating', { ascending: false });
   const container = document.getElementById('rankings-list');
-  if (!data || data.length === 0) {
-    container.innerHTML = '<div class="empty-state">Nothing rated yet.<br>Head to Search to get started.</div>';
-    return;
-  }
+  if (!data || data.length === 0) { container.innerHTML = '<div class="empty-state">Nothing rated yet.<br>Head to Search to get started.</div>'; return; }
   renderBarChart(data);
   container.innerHTML = data.map(function(r, i) {
     const rankClass = i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':'';
-    const topSongs = r.top_songs&&r.top_songs.length>0?
-      '<p style="color:var(--green);font-size:0.72rem;margin-top:5px">★ '+r.top_songs.slice(0,3).join(' · ')+'</p>':'';
-    const comment = r.comments?
-      '<p style="color:var(--text-muted);font-size:0.72rem;margin-top:3px;font-style:italic">"'+r.comments.substring(0,70)+(r.comments.length>70?'…':'')+'"</p>':'';
-    return '<div class="rankings-item '+rankClass+'" onclick="openAlbum(\''+r.albums.spotify_id+'\')">'+
-      '<div class="rank-num">'+(i+1)+'</div>'+
-      '<img src="'+r.albums.image_url+'" alt="'+r.albums.name+'" />'+
-      '<div class="rankings-item-info"><h3>'+r.albums.name+'</h3>'+
-      '<p>'+r.albums.artist+' &nbsp;·&nbsp; '+(r.albums.release_year||'')+'</p>'+
-      topSongs+comment+'</div>'+
-      '<div class="big-rating">'+r.rating+'</div></div>';
+    const topSongs = r.top_songs&&r.top_songs.length>0?'<p style="color:var(--green);font-size:0.72rem;margin-top:5px">★ '+r.top_songs.slice(0,3).join(' · ')+'</p>':'';
+    const comment = r.comments?'<p style="color:var(--text-muted);font-size:0.72rem;margin-top:3px;font-style:italic">"'+r.comments.substring(0,70)+(r.comments.length>70?'…':'')+'"</p>':'';
+    return '<div class="rankings-item '+rankClass+'" onclick="openAlbum(\''+r.albums.spotify_id+'\')"><div class="rank-num">'+(i+1)+'</div><img src="'+r.albums.image_url+'" alt="'+r.albums.name+'" /><div class="rankings-item-info"><h3>'+r.albums.name+'</h3><p>'+r.albums.artist+' &nbsp;·&nbsp; '+(r.albums.release_year||'')+'</p>'+topSongs+comment+'</div><div class="big-rating">'+r.rating+'</div></div>';
   }).join('');
 }
 
 // ================================================================
 // WEEK IN REVIEW CARD — 1080×1920 (9:16)
 //
-// Fixed zone map:
+// Color palette is sampled from the top 3 album art images and
+// used to tint backgrounds, borders, and accents throughout.
+//
+// Zone map:
 //   0    – 130   MCM header
-//   130  – 260   Title + date
-//   260  – 400   Stats
-//   400  – 640   Top 3 albums
-//   640  – 920   Play timeline
-//   920  – 1720  Starred songs (2-col grid, up to 6)
-//   1720 – 1920  MCM footer
+//   130  – 270   Title + date
+//   270  – 410   Stats
+//   410  – 660   Top 3 albums
+//   660  – 940   Play timeline
+//   940  – 1730  Starred songs (floating pill tiles)
+//   1730 – 1920  MCM footer
 // ================================================================
 
-const CW  = 1080;
-const CH  = 1920;
-const PAD = 64;
-
+const CW = 1080, CH = 1920, PAD = 64;
 const Z = {
-  headerEnd:   130,
-  titleEnd:    260,
-  statsEnd:    400,
-  albumsEnd:   640,
-  chartEnd:    920,
-  songsStart:  940,
-  songsEnd:    1720,
-  footerStart: 1720,
+  headerEnd: 130, titleEnd: 270, statsEnd: 410,
+  albumsEnd: 660, chartEnd: 940,
+  songsStart: 955, songsEnd: 1730, footerStart: 1730
 };
 
-// Strict text truncation — measures actual pixel width
+// ---- Color Sampling ----
+// Samples N random pixels from a canvas-drawn image and returns
+// the average as [r, g, b]. Falls back to Spotify green if no image.
+function sampleImageColor(img, sampleCount) {
+  if (!img) return [29, 185, 84];
+  try {
+    const size = 40;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = size; offscreen.height = size;
+    const oc = offscreen.getContext('2d');
+    oc.drawImage(img, 0, 0, size, size);
+    const pixels = oc.getImageData(0, 0, size, size).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    const step = Math.max(1, Math.floor((size * size) / sampleCount)) * 4;
+    for (let i = 0; i < pixels.length; i += step) {
+      r += pixels[i]; g += pixels[i+1]; b += pixels[i+2]; count++;
+    }
+    return [Math.round(r/count), Math.round(g/count), Math.round(b/count)];
+  } catch(e) {
+    return [29, 185, 84];
+  }
+}
+
+// Blend multiple [r,g,b] colors together with equal weight
+function blendColors(colorArr) {
+  if (!colorArr || colorArr.length === 0) return [29, 185, 84];
+  const r = Math.round(colorArr.reduce(function(s,c){return s+c[0];},0) / colorArr.length);
+  const g = Math.round(colorArr.reduce(function(s,c){return s+c[1];},0) / colorArr.length);
+  const b = Math.round(colorArr.reduce(function(s,c){return s+c[2];},0) / colorArr.length);
+  return [r, g, b];
+}
+
+// Lighten a color toward white by t (0=original, 1=white)
+function lighten(rgb, t) {
+  return [
+    Math.round(rgb[0] + (255 - rgb[0]) * t),
+    Math.round(rgb[1] + (255 - rgb[1]) * t),
+    Math.round(rgb[2] + (255 - rgb[2]) * t)
+  ];
+}
+
+function toRgb(rgb, alpha) {
+  if (alpha !== undefined) return 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+alpha+')';
+  return 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')';
+}
+
+// ---- Canvas Helpers ----
 function fit(ctx, text, maxW) {
   if (!text) return '';
   if (ctx.measureText(text).width <= maxW) return text;
@@ -559,8 +542,7 @@ function fit(ctx, text, maxW) {
 
 function rrect(ctx, x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x+r, y);
-  ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
   ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
   ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
   ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
@@ -568,19 +550,15 @@ function rrect(ctx, x, y, w, h, r) {
 }
 
 function starburst(ctx, cx, cy, outerR, rays, color) {
-  ctx.save();
-  ctx.fillStyle = color;
+  ctx.save(); ctx.fillStyle = color;
   const innerR = outerR * 0.38;
   for (let i = 0; i < rays; i++) {
-    const a1 = (i / rays) * Math.PI * 2;
-    const a2 = a1 + Math.PI / rays;
-    const a3 = a1 + (Math.PI * 2) / rays;
+    const a1 = (i/rays)*Math.PI*2, a2 = a1+Math.PI/rays, a3 = a1+(Math.PI*2)/rays;
     ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a1) * outerR, cy + Math.sin(a1) * outerR);
-    ctx.lineTo(cx + Math.cos(a2) * innerR, cy + Math.sin(a2) * innerR);
-    ctx.lineTo(cx + Math.cos(a3) * outerR, cy + Math.sin(a3) * outerR);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(cx+Math.cos(a1)*outerR, cy+Math.sin(a1)*outerR);
+    ctx.lineTo(cx+Math.cos(a2)*innerR, cy+Math.sin(a2)*innerR);
+    ctx.lineTo(cx+Math.cos(a3)*outerR, cy+Math.sin(a3)*outerR);
+    ctx.closePath(); ctx.fill();
   }
   ctx.restore();
 }
@@ -589,119 +567,86 @@ function dotgrid(ctx, x, y, cols, rows, gap, r, color) {
   ctx.fillStyle = color;
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      ctx.beginPath();
-      ctx.arc(x + col * gap, y + row * gap, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(x+col*gap, y+row*gap, r, 0, Math.PI*2); ctx.fill();
     }
   }
 }
 
 function rule(ctx, x, y, w, color) {
   ctx.save();
-  const cx = x + w / 2;
+  const cx = x + w/2;
   ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.globalAlpha = 0.35;
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(cx - 24, y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx + 24, y); ctx.lineTo(x + w, y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(cx-24, y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+24, y); ctx.lineTo(x+w, y); ctx.stroke();
   ctx.globalAlpha = 1;
   [-14, 0, 14].forEach(function(dx, i) {
-    ctx.fillStyle = i === 1 ? '#1DB954' : color;
-    ctx.globalAlpha = i === 1 ? 0.9 : 0.3;
-    ctx.beginPath(); ctx.arc(cx + dx, y, i === 1 ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = i===1 ? color : color;
+    ctx.globalAlpha = i===1 ? 0.9 : 0.3;
+    ctx.beginPath(); ctx.arc(cx+dx, y, i===1?4:2.5, 0, Math.PI*2); ctx.fill();
   });
-  ctx.globalAlpha = 1;
-  ctx.restore();
+  ctx.globalAlpha = 1; ctx.restore();
 }
 
 function miniLineChart(ctx, x, y, w, h, byDate, albums, colors) {
   const dates = Object.keys(byDate).sort();
   if (dates.length < 2) {
-    ctx.fillStyle = '#3a3a2e';
-    ctx.font = 'italic 24px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Not enough data yet', x + w/2, y + h/2);
-    ctx.textAlign = 'left';
-    return;
+    ctx.fillStyle = '#3a3a2e'; ctx.font = 'italic 24px Georgia, serif'; ctx.textAlign = 'center';
+    ctx.fillText('Not enough data yet', x+w/2, y+h/2); ctx.textAlign = 'left'; return;
   }
   let maxVal = 0;
-  dates.forEach(function(d) {
-    albums.forEach(function(a) { maxVal = Math.max(maxVal, (byDate[d] && byDate[d][a]) || 0); });
-  });
+  dates.forEach(function(d) { albums.forEach(function(a) { maxVal = Math.max(maxVal, (byDate[d]&&byDate[d][a])||0); }); });
   if (maxVal === 0) maxVal = 1;
-
-  const pL = 52, pR = 20, pT = 12, pB = 30;
-  const cw = w - pL - pR, ch = h - pT - pB;
-
-  // Grid lines
+  const pL=52, pR=20, pT=12, pB=30, cw=w-pL-pR, ch=h-pT-pB;
   ctx.strokeStyle = '#2a2a1e'; ctx.lineWidth = 1;
-  [0, 0.5, 1].forEach(function(pct) {
-    const gy = y + pT + ch * (1 - pct);
-    ctx.beginPath(); ctx.moveTo(x + pL, gy); ctx.lineTo(x + pL + cw, gy); ctx.stroke();
+  [0,0.5,1].forEach(function(pct) {
+    const gy = y+pT+ch*(1-pct);
+    ctx.beginPath(); ctx.moveTo(x+pL,gy); ctx.lineTo(x+pL+cw,gy); ctx.stroke();
     if (pct > 0) {
-      ctx.fillStyle = '#3a3a2e'; ctx.font = '20px "DM Sans", sans-serif'; ctx.textAlign = 'right';
-      ctx.fillText(Math.round(maxVal * pct) + 'm', x + pL - 6, gy + 7); ctx.textAlign = 'left';
+      ctx.fillStyle = '#3a3a2e'; ctx.font = '20px "DM Sans",sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText(Math.round(maxVal*pct)+'m', x+pL-6, gy+7); ctx.textAlign = 'left';
     }
   });
-
-  // X labels — Mondays only
-  ctx.fillStyle = '#3a3a2e'; ctx.font = '18px "DM Sans", sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#3a3a2e'; ctx.font = '18px "DM Sans",sans-serif'; ctx.textAlign = 'center';
   dates.forEach(function(d, i) {
-    const dt = new Date(d + 'T00:00:00');
-    if (i === 0 || dt.getDay() === 1) {
-      const px = x + pL + (i / Math.max(dates.length - 1, 1)) * cw;
-      ctx.fillText((dt.getMonth()+1) + '/' + dt.getDate(), px, y + pT + ch + pB - 4);
+    const dt = new Date(d+'T00:00:00');
+    if (i===0 || dt.getDay()===1) {
+      const px = x+pL+(i/Math.max(dates.length-1,1))*cw;
+      ctx.fillText((dt.getMonth()+1)+'/'+dt.getDate(), px, y+pT+ch+pB-4);
     }
   });
   ctx.textAlign = 'left';
-
-  // Lines per album
   albums.forEach(function(album, ai) {
     const pts = dates.map(function(d, i) {
-      return {
-        px: x + pL + (i / Math.max(dates.length - 1, 1)) * cw,
-        py: y + pT + ch * (1 - ((byDate[d] && byDate[d][album]) || 0) / maxVal)
-      };
+      return { px: x+pL+(i/Math.max(dates.length-1,1))*cw, py: y+pT+ch*(1-((byDate[d]&&byDate[d][album])||0)/maxVal) };
     });
-
-    // Area fill
-    ctx.beginPath();
-    ctx.moveTo(pts[0].px, y + pT + ch);
+    ctx.beginPath(); ctx.moveTo(pts[0].px, y+pT+ch);
     pts.forEach(function(p) { ctx.lineTo(p.px, p.py); });
-    ctx.lineTo(pts[pts.length-1].px, y + pT + ch);
-    ctx.closePath();
-    ctx.fillStyle = colors[ai] + '15'; ctx.fill();
-
-    // Bezier line
+    ctx.lineTo(pts[pts.length-1].px, y+pT+ch); ctx.closePath();
+    ctx.fillStyle = colors[ai]+'15'; ctx.fill();
     ctx.beginPath(); ctx.strokeStyle = colors[ai]; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
     ctx.moveTo(pts[0].px, pts[0].py);
     for (let i = 1; i < pts.length; i++) {
-      const cpx = (pts[i-1].px + pts[i].px) / 2;
+      const cpx = (pts[i-1].px+pts[i].px)/2;
       ctx.bezierCurveTo(cpx, pts[i-1].py, cpx, pts[i].py, pts[i].px, pts[i].py);
     }
     ctx.stroke();
-
-    // Dots
     pts.forEach(function(p) {
-      ctx.beginPath(); ctx.arc(p.px, p.py, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = colors[ai]; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.px, p.py, 3.5, 0, Math.PI*2); ctx.fillStyle = colors[ai]; ctx.fill();
     });
   });
-
-  // Legend top-right
-  let ly = y + pT + 4;
+  let ly = y+pT+4;
   albums.forEach(function(album, ai) {
-    const lx = x + pL + cw - 10;
-    ctx.fillStyle = colors[ai];
-    ctx.fillRect(lx - 218, ly + 1, 14, 3);
-    ctx.font = '17px "DM Sans", sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText(fit(ctx, album, 200), lx - 198, ly + 11);
-    ly += 24;
+    const lx = x+pL+cw-10;
+    ctx.fillStyle = colors[ai]; ctx.fillRect(lx-218, ly+1, 14, 3);
+    ctx.font = '17px "DM Sans",sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(fit(ctx, album, 200), lx-198, ly+11); ly += 24;
   });
 }
 
+// ---- Data Fetching ----
 async function generateWeekReview() {
   const endDate = new Date();
-  const startDate = new Date(); startDate.setDate(endDate.getDate() - 7);
-
+  const startDate = new Date(); startDate.setDate(endDate.getDate()-7);
   document.getElementById('week-loading').classList.remove('hidden');
   document.getElementById('week-output').classList.add('hidden');
   document.getElementById('week-empty').classList.add('hidden');
@@ -711,64 +656,49 @@ async function generateWeekReview() {
   const { data: rC } = await db.from('ratings').select('*, albums(*)')
     .gte('created_at', startDate.toISOString()).lt('created_at', endDate.toISOString());
   const rmap = {};
-  [...(rU||[]), ...(rC||[])].forEach(function(r) { rmap[r.id] = r; });
-  const weekRatings = Object.values(rmap).sort(function(a,b) { return b.rating - a.rating; });
+  [...(rU||[]),...(rC||[])].forEach(function(r) { rmap[r.id] = r; });
+  const weekRatings = Object.values(rmap).sort(function(a,b) { return b.rating-a.rating; });
 
   const { data: playLogs } = await db.from('play_logs').select('*')
     .gte('logged_at', startDate.toISOString()).lt('logged_at', endDate.toISOString());
 
-  if (!weekRatings.length && (!playLogs || !playLogs.length)) {
+  if (!weekRatings.length && (!playLogs||!playLogs.length)) {
     document.getElementById('week-loading').classList.add('hidden');
-    document.getElementById('week-empty').classList.remove('hidden');
-    return;
+    document.getElementById('week-empty').classList.remove('hidden'); return;
   }
 
-  const totalMins = (playLogs||[]).reduce(function(s,l) {
-    return s + (l.duration_ms ? Math.round(l.duration_ms / 60000) : 0);
-  }, 0);
-
+  const totalMins = (playLogs||[]).reduce(function(s,l) { return s+(l.duration_ms?Math.round(l.duration_ms/60000):0); }, 0);
   const albumMins = {};
   (playLogs||[]).forEach(function(l) {
-    const m = l.duration_ms ? Math.round(l.duration_ms / 60000) : 0;
-    if (m > 0) albumMins[l.album_name] = (albumMins[l.album_name]||0) + m;
+    const m = l.duration_ms?Math.round(l.duration_ms/60000):0;
+    if (m > 0) albumMins[l.album_name] = (albumMins[l.album_name]||0)+m;
   });
-
   const byDate = {};
   (playLogs||[]).forEach(function(l) {
     const date = l.logged_at.substring(0,10);
-    const m = l.duration_ms ? Math.round(l.duration_ms / 60000) : 0;
+    const m = l.duration_ms?Math.round(l.duration_ms/60000):0;
     if (!byDate[date]) byDate[date] = {};
-    byDate[date][l.album_name] = (byDate[date][l.album_name]||0) + m;
+    byDate[date][l.album_name] = (byDate[date][l.album_name]||0)+m;
   });
-
-  const top5forChart = Object.entries(albumMins)
-    .sort(function(a,b) { return b[1]-a[1]; }).slice(0,5).map(function(e) { return e[0]; });
+  const top5forChart = Object.entries(albumMins).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[0];});
   const lineColors = ['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
 
   const starredSongs = [];
   weekRatings.slice(0,5).forEach(function(r) {
     if (r.top_songs && r.top_songs.length > 0) {
       r.top_songs.forEach(function(song) {
-        if (starredSongs.length < 6) {
-          starredSongs.push({
-            song: song,
-            album: r.albums.name,
-            artist: r.albums.artist,
-            mins: albumMins[r.albums.name] || 0
-          });
+        if (starredSongs.length < 8) {
+          starredSongs.push({ song, album: r.albums.name, artist: r.albums.artist, mins: albumMins[r.albums.name]||0 });
         }
       });
     }
   });
 
   const top3 = weekRatings.slice(0,3);
-  const avgScore = top3.length
-    ? (top3.reduce(function(s,r) { return s+r.rating; }, 0) / top3.length).toFixed(1)
-    : '—';
-  const totalStarred = weekRatings.reduce(function(s,r) {
-    return s + (r.top_songs ? r.top_songs.length : 0);
-  }, 0);
+  const avgScore = top3.length ? (top3.reduce(function(s,r){return s+r.rating;},0)/top3.length).toFixed(1) : '—';
+  const totalStarred = weekRatings.reduce(function(s,r){return s+(r.top_songs?r.top_songs.length:0);},0);
 
+  // Load album art images
   const artImages = await Promise.all(top3.map(function(r) {
     return new Promise(function(resolve) {
       if (!r.albums.image_url) { resolve(null); return; }
@@ -779,11 +709,23 @@ async function generateWeekReview() {
     });
   }));
 
+  // Sample colors from each art image and blend into a palette
+  const sampledColors = artImages.map(function(img) { return sampleImageColor(img, 200); });
+  const blended = blendColors(sampledColors.filter(function(c) { return c !== null; }));
+  // Per-album accent colors — each slightly different hue from their own art
+  const accentColors = sampledColors.map(function(c) {
+    // Ensure minimum brightness so colors don't go too dark
+    const bright = Math.max(c[0], c[1], c[2]);
+    if (bright < 60) return lighten(c, 0.4);
+    return c;
+  });
+
   document.getElementById('week-loading').classList.add('hidden');
   drawCard({
     startDate, endDate, top3, artImages, totalMins, avgScore,
     totalRated: weekRatings.length, totalStarred, starredSongs,
-    byDate, top5forChart, lineColors
+    byDate, top5forChart, lineColors,
+    blended, accentColors
   });
   document.getElementById('week-output').classList.remove('hidden');
 }
@@ -793,83 +735,130 @@ function drawCard(d) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, CW, CH);
 
-  // Background
+  const accent = d.blended;           // blended color from all 3 albums
+  const accentStr = toRgb(accent);
+  const accentDim = toRgb(accent, 0.12);
+  const accentMid = toRgb(accent, 0.35);
+  const accentLine = toRgb(lighten(accent, 0.3), 0.5);
+
+  // ── Background — warm dark tinted with album palette ──
   ctx.fillStyle = '#0e0e0b'; ctx.fillRect(0, 0, CW, CH);
-  const gl = ctx.createRadialGradient(0, 400, 0, 0, 400, 700);
-  gl.addColorStop(0, 'rgba(29,185,84,0.06)'); gl.addColorStop(1, 'transparent');
-  ctx.fillStyle = gl; ctx.fillRect(0, 0, CW, CH);
+
+  // Album color radial glow — top right
+  const g1 = ctx.createRadialGradient(CW, 0, 0, CW, 0, 900);
+  g1.addColorStop(0, toRgb(accent, 0.12)); g1.addColorStop(1, 'transparent');
+  ctx.fillStyle = g1; ctx.fillRect(0, 0, CW, CH);
+
+  // Secondary glow — bottom left
+  const g2 = ctx.createRadialGradient(0, CH, 0, 0, CH, 700);
+  g2.addColorStop(0, toRgb(lighten(accent, 0.2), 0.08)); g2.addColorStop(1, 'transparent');
+  ctx.fillStyle = g2; ctx.fillRect(0, 0, CW, CH);
 
   // ── ZONE 1: MCM Header ──
-  ctx.fillStyle = '#080806'; ctx.fillRect(0, 0, CW, Z.headerEnd);
-  ctx.fillStyle = '#1DB954'; ctx.fillRect(0, 0, CW, 5);
-  starburst(ctx, CW - 70, 65, 120, 22, 'rgba(29,185,84,0.08)');
-  dotgrid(ctx, PAD, 28, 5, 3, 20, 2.5, 'rgba(29,185,84,0.14)');
-  ctx.save();
-  ctx.strokeStyle = 'rgba(29,185,84,0.07)'; ctx.lineWidth = 3;
+  ctx.fillStyle = '#06060400'; ctx.fillRect(0, 0, CW, Z.headerEnd);
+  // Tinted header overlay using album color
+  const headerGrad = ctx.createLinearGradient(0, 0, CW, Z.headerEnd);
+  headerGrad.addColorStop(0, toRgb(accent, 0.15));
+  headerGrad.addColorStop(1, 'rgba(6,6,4,0.95)');
+  ctx.fillStyle = headerGrad; ctx.fillRect(0, 0, CW, Z.headerEnd);
+
+  // Top edge — album color
+  ctx.fillStyle = accentStr; ctx.fillRect(0, 0, CW, 5);
+
+  // Starburst — top right, album tinted
+  starburst(ctx, CW-70, 65, 120, 22, toRgb(accent, 0.13));
+
+  // Dot grid — top left
+  dotgrid(ctx, PAD, 24, 5, 3, 20, 2.5, toRgb(accent, 0.2));
+
+  // MCM arc
+  ctx.save(); ctx.strokeStyle = toRgb(accent, 0.09); ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(300, 0); ctx.quadraticCurveTo(500, 65, 300, Z.headerEnd);
   ctx.stroke(); ctx.restore();
-  rule(ctx, PAD, Z.headerEnd - 1, CW - PAD * 2, '#1DB954');
+
+  rule(ctx, PAD, Z.headerEnd-1, CW-PAD*2, accentStr);
 
   // ── ZONE 2: Title + Date ──
-  const titleY = Z.headerEnd + 22;
+  const titleY = Z.headerEnd + 20;
+
+  // Waveform — colored from album palette
   const wh = [7,16,26,34,26,16,7], wbw = 9, wgap = 5;
-  const wTotalW = wh.length * (wbw + wgap) - wgap;
+  const wTotalW = wh.length*(wbw+wgap)-wgap;
   const wMidY = titleY + 40;
   wh.forEach(function(h, i) {
-    const b = 0.5 + 0.5 * (h / 34);
-    ctx.fillStyle = 'rgba(29,' + Math.round(100 + b*85) + ',' + Math.round(50 + b*34) + ',1)';
-    ctx.beginPath(); ctx.roundRect(PAD + i*(wbw+wgap), wMidY - h/2, wbw, h, 3); ctx.fill();
+    const t = h / 34;
+    const barColor = toRgb([
+      Math.round(accent[0]*t + 40*(1-t)),
+      Math.round(accent[1]*t + 40*(1-t)),
+      Math.round(accent[2]*t + 40*(1-t))
+    ]);
+    ctx.fillStyle = barColor;
+    ctx.beginPath(); ctx.roundRect(PAD+i*(wbw+wgap), wMidY-h/2, wbw, h, 3); ctx.fill();
   });
+
   const titleX = PAD + wTotalW + 18;
-  ctx.fillStyle = '#4a4a3a'; ctx.font = '300 20px "DM Sans", sans-serif';
-  ctx.fillText('YOUR PERSONAL', titleX, titleY + 22);
-  ctx.fillStyle = '#f0efe8'; ctx.font = 'italic 48px Georgia, serif';
-  ctx.fillText('Album ', titleX, titleY + 68);
+  ctx.fillStyle = toRgb(accent, 0.5); ctx.font = '300 20px "DM Sans",sans-serif';
+  ctx.fillText('YOUR PERSONAL', titleX, titleY+22);
+  ctx.fillStyle = '#f0efe8'; ctx.font = 'italic 48px Georgia,serif';
+  ctx.fillText('Album ', titleX, titleY+68);
   const aw = ctx.measureText('Album ').width;
-  ctx.fillStyle = '#1DB954'; ctx.font = '48px Georgia, serif';
-  ctx.fillText('Rater', titleX + aw, titleY + 68);
+  ctx.fillStyle = accentStr; ctx.font = '48px Georgia,serif';
+  ctx.fillText('Rater', titleX+aw, titleY+68);
+
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const s = d.startDate, e = new Date(d.endDate); e.setDate(e.getDate()-1);
   const dateStr = months[s.getMonth()]+' '+s.getDate()+' – '+months[e.getMonth()]+' '+e.getDate()+', '+e.getFullYear();
-  ctx.fillStyle = '#4a4a3a'; ctx.font = '500 22px "DM Sans", sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText(dateStr.toUpperCase(), CW - PAD, titleY + 68);
-  ctx.textAlign = 'left';
-  rule(ctx, PAD, Z.titleEnd - 1, CW - PAD * 2, '#2e2e24');
+  ctx.fillStyle = toRgb(accent, 0.55); ctx.font = '500 22px "DM Sans",sans-serif';
+  ctx.textAlign = 'right'; ctx.fillText(dateStr.toUpperCase(), CW-PAD, titleY+68); ctx.textAlign = 'left';
+
+  rule(ctx, PAD, Z.titleEnd-1, CW-PAD*2, '#2e2e24');
 
   // ── ZONE 3: Stats ──
-  const statsY = Z.titleEnd + 16;
-  const statW = (CW - PAD * 2) / 4;
+  const statsY = Z.statsEnd - 130;
+  const statW = (CW-PAD*2)/4;
   [
     { val: String(d.totalRated),  label: 'RATED'    },
     { val: String(d.totalStarred),label: 'STARRED'  },
     { val: d.totalMins > 0 ? Math.round(d.totalMins)+'m' : '—', label: 'MINUTES' },
-    { val: d.avgScore,            label: 'AVG SCORE'},
+    { val: d.avgScore,            label: 'AVG SCORE' },
   ].forEach(function(stat, i) {
-    const sx = PAD + i * statW;
-    ctx.fillStyle = '#1DB954'; ctx.font = 'italic bold 56px Georgia, serif';
-    ctx.fillText(stat.val, sx, statsY + 60);
-    ctx.fillStyle = '#4a4a3a'; ctx.font = '600 17px "DM Sans", sans-serif';
-    ctx.fillText(stat.label, sx, statsY + 82);
+    const sx = PAD + i*statW;
+    ctx.fillStyle = accentStr; ctx.font = 'italic bold 58px Georgia,serif';
+    ctx.fillText(stat.val, sx, statsY+62);
+    ctx.fillStyle = toRgb(accent, 0.55); ctx.font = '600 17px "DM Sans",sans-serif';
+    ctx.fillText(stat.label, sx, statsY+84);
   });
-  rule(ctx, PAD, Z.statsEnd - 1, CW - PAD * 2, '#2e2e24');
+
+  rule(ctx, PAD, Z.statsEnd-1, CW-PAD*2, '#2e2e24');
 
   // ── ZONE 4: Top 3 Albums ──
   const albumY = Z.statsEnd + 10;
-  ctx.fillStyle = '#3a3a2e'; ctx.font = '600 17px "DM Sans", sans-serif';
-  ctx.fillText('TOP ALBUMS THIS WEEK', PAD, albumY + 16);
+  ctx.fillStyle = toRgb(accent, 0.4); ctx.font = '600 17px "DM Sans",sans-serif';
+  ctx.fillText('TOP ALBUMS THIS WEEK', PAD, albumY+16);
+
   const cardGap = 14;
-  const cardW = Math.floor((CW - PAD * 2 - cardGap * 2) / 3);
+  const cardW = Math.floor((CW-PAD*2-cardGap*2)/3);
   const cardH = Z.albumsEnd - Z.statsEnd - 34;
   const artSz = cardW - 20;
-  const rankClr = ['#1DB954', '#9e9d8e', '#e8a030'];
+
   for (let i = 0; i < 3; i++) {
-    const cx = PAD + i * (cardW + cardGap);
+    const cx = PAD + i*(cardW+cardGap);
     const cy = albumY + 26;
     const r = d.top3[i];
-    ctx.fillStyle = '#141410'; ctx.strokeStyle = '#2a2a1e'; ctx.lineWidth = 1;
+    // Each card tinted by its own album's color
+    const cardAccent = d.accentColors[i] || accent;
+
+    ctx.fillStyle = '#141410'; ctx.strokeStyle = toRgb(cardAccent, 0.25); ctx.lineWidth = 1;
     rrect(ctx, cx, cy, cardW, cardH, 6); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = rankClr[i]; ctx.fillRect(cx, cy, cardW, 4);
+    // Rank stripe — album's own color
+    ctx.fillStyle = toRgb(cardAccent); ctx.fillRect(cx, cy, cardW, 4);
+
+    // Subtle card bg tint from album color
+    const cardBg = ctx.createLinearGradient(cx, cy, cx+cardW, cy+cardH);
+    cardBg.addColorStop(0, toRgb(cardAccent, 0.07));
+    cardBg.addColorStop(1, 'transparent');
+    ctx.fillStyle = cardBg; rrect(ctx, cx, cy, cardW, cardH, 6); ctx.fill();
+
     if (r) {
       const artY = cy + 12;
       if (d.artImages[i]) {
@@ -878,106 +867,154 @@ function drawCard(d) {
       } else {
         ctx.fillStyle = '#1e1e18'; rrect(ctx, cx+10, artY, artSz, artSz, 4); ctx.fill();
       }
-      ctx.fillStyle = rankClr[i]; rrect(ctx, cx+10, artY, 38, 26, 3); ctx.fill();
-      ctx.fillStyle = i===0?'#000':'#0a0a08'; ctx.font = 'bold 15px "DM Sans", sans-serif';
+      // Rank badge
+      ctx.fillStyle = toRgb(cardAccent); rrect(ctx, cx+10, artY, 38, 26, 3); ctx.fill();
+      ctx.fillStyle = '#000'; ctx.font = 'bold 15px "DM Sans",sans-serif';
       ctx.textAlign = 'center'; ctx.fillText('#'+(i+1), cx+29, artY+18); ctx.textAlign = 'left';
-      const tx = cx + 10, tmx = cardW - 20, ty = artY + artSz + 12;
-      ctx.fillStyle = '#f0efe8'; ctx.font = 'bold 21px "DM Sans", sans-serif';
+
+      const tx = cx+10, tmx = cardW-20, ty = artY+artSz+12;
+      ctx.fillStyle = '#f0efe8'; ctx.font = 'bold 21px "DM Sans",sans-serif';
       ctx.fillText(fit(ctx, r.albums.name, tmx), tx, ty);
-      ctx.fillStyle = '#4a4a3a'; ctx.font = '400 17px "DM Sans", sans-serif';
-      ctx.fillText(fit(ctx, r.albums.artist, tmx), tx, ty + 20);
-      ctx.fillStyle = rankClr[i]; ctx.font = 'italic bold 36px Georgia, serif';
-      const rs = String(r.rating);
-      ctx.fillText(rs, tx, ty + 58);
+      ctx.fillStyle = toRgb(cardAccent, 0.7); ctx.font = '400 17px "DM Sans",sans-serif';
+      ctx.fillText(fit(ctx, r.albums.artist, tmx), tx, ty+20);
+      ctx.fillStyle = toRgb(cardAccent); ctx.font = 'italic bold 36px Georgia,serif';
+      const rs = String(r.rating); ctx.fillText(rs, tx, ty+58);
       const rw = ctx.measureText(rs).width;
-      ctx.fillStyle = '#3a3a2e'; ctx.font = '400 17px "DM Sans", sans-serif';
-      ctx.fillText('/ 10', tx + rw + 5, ty + 52);
+      ctx.fillStyle = '#3a3a2e'; ctx.font = '400 17px "DM Sans",sans-serif';
+      ctx.fillText('/ 10', tx+rw+5, ty+52);
     }
   }
-  rule(ctx, PAD, Z.albumsEnd - 1, CW - PAD * 2, '#2e2e24');
+
+  rule(ctx, PAD, Z.albumsEnd-1, CW-PAD*2, '#2e2e24');
 
   // ── ZONE 5: Play Timeline ──
   const chartY = Z.albumsEnd + 8;
-  ctx.fillStyle = '#3a3a2e'; ctx.font = '600 17px "DM Sans", sans-serif';
-  ctx.fillText('PLAY TIMELINE — MINUTES PER DAY', PAD, chartY + 16);
-  miniLineChart(ctx, PAD, chartY + 28, CW - PAD * 2, Z.chartEnd - chartY - 40,
-    d.byDate, d.top5forChart, d.lineColors);
-  rule(ctx, PAD, Z.chartEnd - 1, CW - PAD * 2, '#2e2e24');
+  ctx.fillStyle = toRgb(accent, 0.4); ctx.font = '600 17px "DM Sans",sans-serif';
+  ctx.fillText('PLAY TIMELINE — MINUTES PER DAY', PAD, chartY+16);
+  miniLineChart(ctx, PAD, chartY+28, CW-PAD*2, Z.chartEnd-chartY-40, d.byDate, d.top5forChart, d.lineColors);
 
-  // ── ZONE 6: Starred Songs (2-column tile grid) ──
-  const songsAreaH = Z.songsEnd - Z.songsStart;
-  const maxSongs = Math.min(d.starredSongs.length, 6);
-  const cols = 2;
-  const tileGap = 14;
-  const tileW = Math.floor((CW - PAD * 2 - tileGap) / cols);
-  // Divide available height by number of rows needed
-  const numRows = Math.ceil(maxSongs / cols) || 1;
-  const tileH = Math.floor((songsAreaH - 36 - tileGap * (numRows - 1)) / numRows);
+  rule(ctx, PAD, Z.chartEnd-1, CW-PAD*2, '#2e2e24');
 
-  ctx.fillStyle = '#3a3a2e'; ctx.font = '600 17px "DM Sans", sans-serif';
-  ctx.fillText('STARRED SONGS', PAD, Z.songsStart + 20);
+  // ── ZONE 6: Starred Songs — Floating Pill Tiles ──
+  ctx.fillStyle = toRgb(accent, 0.4); ctx.font = '600 17px "DM Sans",sans-serif';
+  ctx.fillText('STARRED SONGS', PAD, Z.songsStart+20);
+
+  const maxSongs = Math.min(d.starredSongs.length, 8);
+  const songsAreaH = Z.songsEnd - Z.songsStart - 36;
 
   if (maxSongs === 0) {
-    ctx.fillStyle = '#2e2e24'; ctx.font = 'italic 26px Georgia, serif';
-    ctx.fillText('No starred songs this week', PAD, Z.songsStart + 70);
+    ctx.fillStyle = '#2e2e24'; ctx.font = 'italic 26px Georgia,serif';
+    ctx.fillText('No starred songs this week', PAD, Z.songsStart+70);
   } else {
+    // Pill tile layout:
+    // Tiles have a fixed height of 90px. They stack with slight vertical overlap
+    // and a small random-looking (but deterministic) horizontal offset based on index.
+    // Each tile's left border color cycles through the per-album accent colors.
+    const tileH = 90;
+    const tileW = CW - PAD*2;
+    const overlap = maxSongs > 4 ? 14 : 8; // more overlap when more songs
+    const totalStackH = tileH + (maxSongs-1)*(tileH - overlap);
+    // Center the stack vertically in the songs zone
+    const stackTopY = Z.songsStart + 36 + Math.max(0, (songsAreaH - totalStackH) / 2);
+
+    // Deterministic horizontal jitter — small, tasteful
+    const jitters = [-12, 8, -6, 14, -10, 6, -14, 10];
+
     for (let i = 0; i < maxSongs; i++) {
       const sg = d.starredSongs[i];
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const tx = PAD + col * (tileW + tileGap);
-      const ty = Z.songsStart + 32 + row * (tileH + tileGap);
+      const tileY = stackTopY + i*(tileH - overlap);
+      const jitter = jitters[i % jitters.length];
+      const tileX = PAD + jitter;
+      const tileActualW = tileW - Math.abs(jitter);
 
-      // Card background
-      ctx.fillStyle = '#12120f'; ctx.strokeStyle = '#2a2a1e'; ctx.lineWidth = 1;
-      rrect(ctx, tx, ty, tileW, tileH, 8); ctx.fill(); ctx.stroke();
+      // Tile border color — cycles through album accent colors
+      const tileAccent = d.accentColors[i % d.accentColors.length] || accent;
+      const tileAccentBright = lighten(tileAccent, 0.15);
 
-      // Left green accent bar
-      ctx.fillStyle = '#1DB954';
-      rrect(ctx, tx, ty, 4, tileH, 2); ctx.fill();
+      // Shadow / depth layer beneath tile
+      ctx.save();
+      ctx.shadowColor = toRgb(tileAccent, 0.2);
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetY = 4;
 
-      // Star
-      ctx.fillStyle = '#1DB954'; ctx.font = 'bold 18px "DM Sans", sans-serif';
-      ctx.fillText('★', tx + 14, ty + Math.round(tileH * 0.38));
+      // Tile background
+      ctx.fillStyle = '#111110';
+      rrect(ctx, tileX, tileY, tileActualW, tileH, 44); // high radius = pill
+      ctx.fill();
+      ctx.restore();
 
-      // Minutes pill — top right
-      if (sg.mins > 0) {
-        const label = sg.mins + 'm';
-        ctx.font = '600 15px "DM Sans", sans-serif';
-        const pillW = ctx.measureText(label).width + 18;
-        const pillH = 22;
-        const px = tx + tileW - pillW - 10;
-        const py = ty + 10;
-        ctx.fillStyle = 'rgba(29,185,84,0.15)';
-        rrect(ctx, px, py, pillW, pillH, 5); ctx.fill();
-        ctx.fillStyle = '#1DB954'; ctx.textAlign = 'center';
-        ctx.fillText(label, px + pillW / 2, py + 15);
-        ctx.textAlign = 'left';
-      }
+      // Tile border
+      ctx.strokeStyle = toRgb(tileAccentBright, 0.22);
+      ctx.lineWidth = 1;
+      rrect(ctx, tileX, tileY, tileActualW, tileH, 44);
+      ctx.stroke();
 
-      // Song name — measured from actual start x to actual end x
-      const innerX = tx + 14;
-      const innerMaxW = tileW - 28;
-      ctx.fillStyle = '#f0efe8'; ctx.font = '600 22px "DM Sans", sans-serif';
-      ctx.fillText(fit(ctx, sg.song, innerMaxW), innerX, ty + Math.round(tileH * 0.58));
+      // Subtle color wash inside tile
+      const tileWash = ctx.createLinearGradient(tileX, tileY, tileX+tileActualW, tileY);
+      tileWash.addColorStop(0, toRgb(tileAccent, 0.1));
+      tileWash.addColorStop(0.4, toRgb(tileAccent, 0.03));
+      tileWash.addColorStop(1, 'transparent');
+      ctx.fillStyle = tileWash;
+      rrect(ctx, tileX, tileY, tileActualW, tileH, 44); ctx.fill();
+
+      // Bold left border — the pill's "accent stripe" as a circle cap
+      ctx.fillStyle = toRgb(tileAccent);
+      ctx.beginPath(); ctx.arc(tileX+44, tileY+tileH/2, tileH/2, 0, Math.PI*2); ctx.fill();
+
+      // Star on the cap
+      ctx.fillStyle = '#000'; ctx.font = 'bold 22px "DM Sans",sans-serif';
+      ctx.textAlign = 'center'; ctx.fillText('★', tileX+44, tileY+tileH/2+8); ctx.textAlign = 'left';
+
+      // Song name
+      const textX = tileX + 44 + tileH/2 + 12;
+      const textMaxW = tileActualW - (44 + tileH/2 + 12) - (sg.mins > 0 ? 90 : 20);
+      ctx.fillStyle = '#f0efe8'; ctx.font = '600 26px "DM Sans",sans-serif';
+      ctx.fillText(fit(ctx, sg.song, textMaxW), textX, tileY + tileH*0.44);
 
       // Artist · album
-      ctx.fillStyle = '#5a5a4a'; ctx.font = '400 17px "DM Sans", sans-serif';
-      ctx.fillText(fit(ctx, sg.artist + ' · ' + sg.album, innerMaxW), innerX, ty + Math.round(tileH * 0.80));
+      ctx.fillStyle = toRgb(tileAccent, 0.65); ctx.font = '400 19px "DM Sans",sans-serif';
+      const metaMaxW = tileActualW - (44 + tileH/2 + 12) - (sg.mins > 0 ? 90 : 20);
+      ctx.fillText(fit(ctx, sg.artist + ' · ' + sg.album, metaMaxW), textX, tileY + tileH*0.74);
+
+      // Minutes pill — right side
+      if (sg.mins > 0) {
+        const label = sg.mins + 'm';
+        ctx.font = '600 18px "DM Sans",sans-serif';
+        const pillW = ctx.measureText(label).width + 20;
+        const pillH = 30;
+        const px = tileX + tileActualW - pillW - 20;
+        const py = tileY + (tileH - pillH)/2;
+        ctx.fillStyle = toRgb(tileAccent, 0.18);
+        rrect(ctx, px, py, pillW, pillH, 15); ctx.fill();
+        ctx.strokeStyle = toRgb(tileAccent, 0.35); ctx.lineWidth = 1;
+        rrect(ctx, px, py, pillW, pillH, 15); ctx.stroke();
+        ctx.fillStyle = toRgb(tileAccentBright);
+        ctx.textAlign = 'center'; ctx.fillText(label, px+pillW/2, py+20); ctx.textAlign = 'left';
+      }
     }
   }
 
   // ── ZONE 7: MCM Footer ──
-  ctx.fillStyle = '#080806'; ctx.fillRect(0, Z.footerStart, CW, CH - Z.footerStart);
-  rule(ctx, PAD, Z.footerStart + 1, CW - PAD * 2, '#1DB954');
-  starburst(ctx, 70, Z.footerStart + (CH - Z.footerStart)/2, 90, 20, 'rgba(29,185,84,0.07)');
-  dotgrid(ctx, CW - PAD - 80, Z.footerStart + 50, 5, 4, 20, 2.5, 'rgba(29,185,84,0.12)');
-  ctx.fillStyle = '#2a2a1e'; ctx.font = '400 20px "DM Sans", sans-serif';
+  ctx.fillStyle = '#06060490'; ctx.fillRect(0, Z.footerStart, CW, CH-Z.footerStart);
+
+  // Footer tint from album palette
+  const footerGrad = ctx.createLinearGradient(0, Z.footerStart, CW, CH);
+  footerGrad.addColorStop(0, 'rgba(6,6,4,0.9)');
+  footerGrad.addColorStop(1, toRgb(accent, 0.1));
+  ctx.fillStyle = footerGrad; ctx.fillRect(0, Z.footerStart, CW, CH-Z.footerStart);
+
+  rule(ctx, PAD, Z.footerStart+1, CW-PAD*2, accentStr);
+  starburst(ctx, 70, Z.footerStart+(CH-Z.footerStart)/2, 90, 20, toRgb(accent, 0.09));
+  dotgrid(ctx, CW-PAD-80, Z.footerStart+50, 5, 4, 20, 2.5, toRgb(accent, 0.14));
+
+  ctx.fillStyle = toRgb(accent, 0.25); ctx.font = '400 20px "DM Sans",sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Album Rater  ·  sillymcwilly1.github.io/2026-Albums', CW/2, Z.footerStart + (CH - Z.footerStart)/2 + 8);
+  ctx.fillText('Album Rater  ·  sillymcwilly1.github.io/2026-Albums', CW/2, Z.footerStart+(CH-Z.footerStart)/2+8);
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#1DB954'; ctx.fillRect(0, CH - 5, CW, 5);
-} // ← end of drawCard
+
+  // Bottom edge
+  ctx.fillStyle = accentStr; ctx.fillRect(0, CH-5, CW, 5);
+} // ← end drawCard
 
 function downloadWeekCard() {
   const canvas = document.getElementById('weekCanvas');
