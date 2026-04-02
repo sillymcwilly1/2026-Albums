@@ -459,6 +459,124 @@ async function loadRankings() {
   }).join('');
 }
 
+async function generateWeekReview() {
+  const endDate = new Date();
+  const startDate = new Date(); startDate.setDate(endDate.getDate() - 7);
+
+  document.getElementById('week-loading').classList.remove('hidden');
+  document.getElementById('week-output').classList.add('hidden');
+  document.getElementById('week-empty').classList.add('hidden');
+
+  const { data: rU } = await db.from('ratings').select('*, albums(*)')
+    .gte('updated_at', startDate.toISOString()).lt('updated_at', endDate.toISOString());
+  const { data: rC } = await db.from('ratings').select('*, albums(*)')
+    .gte('created_at', startDate.toISOString()).lt('created_at', endDate.toISOString());
+  const rmap = {};
+  [...(rU||[]), ...(rC||[])].forEach(function(r) { rmap[r.id] = r; });
+  const weekRatings = Object.values(rmap).sort(function(a,b) { return b.rating - a.rating; });
+
+  const { data: playLogs } = await db.from('play_logs').select('*')
+    .gte('logged_at', startDate.toISOString()).lt('logged_at', endDate.toISOString());
+
+  if (!weekRatings.length && (!playLogs || !playLogs.length)) {
+    document.getElementById('week-loading').classList.add('hidden');
+    document.getElementById('week-empty').classList.remove('hidden');
+    return;
+  }
+
+  const totalMins = (playLogs||[]).reduce(function(s,l) {
+    return s + (l.duration_ms ? Math.round(l.duration_ms / 60000) : 0);
+  }, 0);
+
+  const albumMins = {};
+  (playLogs||[]).forEach(function(l) {
+    const m = l.duration_ms ? Math.round(l.duration_ms / 60000) : 0;
+    if (m > 0) albumMins[l.album_name] = (albumMins[l.album_name] || 0) + m;
+  });
+
+  const byDate = {};
+  (playLogs||[]).forEach(function(l) {
+    const date = l.logged_at.substring(0, 10);
+    const m = l.duration_ms ? Math.round(l.duration_ms / 60000) : 0;
+    if (!byDate[date]) byDate[date] = {};
+    byDate[date][l.album_name] = (byDate[date][l.album_name] || 0) + m;
+  });
+
+  const top5forChart = Object.entries(albumMins)
+    .sort(function(a,b) { return b[1] - a[1]; }).slice(0, 5)
+    .map(function(e) { return e[0]; });
+  const lineColors = ['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
+
+  const starredSongs = [];
+  weekRatings.slice(0, 6).forEach(function(r) {
+    if (r.top_songs && r.top_songs.length > 0) {
+      r.top_songs.forEach(function(song) {
+        if (starredSongs.length < 9) {
+          starredSongs.push({ song, album: r.albums.name, artist: r.albums.artist });
+        }
+      });
+    }
+  });
+
+  const top3 = weekRatings.slice(0, 3);
+  const avgScore = top3.length
+    ? (top3.reduce(function(s,r) { return s + r.rating; }, 0) / top3.length).toFixed(1)
+    : '—';
+  const totalStarred = weekRatings.reduce(function(s,r) {
+    return s + (r.top_songs ? r.top_songs.length : 0);
+  }, 0);
+
+  const artImages = await Promise.all(top3.map(function(r) {
+    return new Promise(function(resolve) {
+      if (!r.albums.image_url) { resolve(null); return; }
+      const img = new Image(); img.crossOrigin = 'anonymous';
+      img.onload = function() { resolve(img); };
+      img.onerror = function() { resolve(null); };
+      img.src = r.albums.image_url;
+    });
+  }));
+
+  const sampledColors = artImages.map(function(img) { return sampleImageColor(img, 200); });
+  const blended = blendColors(sampledColors);
+  const accentColors = sampledColors.map(function(c) {
+    return Math.max(c[0], c[1], c[2]) < 60 ? lighten(c, 0.4) : c;
+  });
+
+  // All-time rating distribution for stacked bar
+  const { data: allRatings } = await db.from('ratings').select('rating');
+  const ratingBuckets = { '1-4': 0, '5-6': 0, '7-8': 0, '9-10': 0 };
+  (allRatings || []).forEach(function(r) {
+    if (r.rating >= 9) ratingBuckets['9-10']++;
+    else if (r.rating >= 7) ratingBuckets['7-8']++;
+    else if (r.rating >= 5) ratingBuckets['5-6']++;
+    else ratingBuckets['1-4']++;
+  });
+  const totalAllTimeCount = (allRatings || []).length;
+
+  document.getElementById('week-loading').classList.add('hidden');
+
+  drawCard({
+    startDate, endDate, top3, artImages, totalMins, avgScore,
+    totalRated: weekRatings.length, totalStarred, starredSongs,
+    byDate, top5forChart, lineColors,
+    blended, accentColors, albumMinsMap: albumMins,
+    ratingBuckets: ratingBuckets,
+    totalAllTime: totalAllTimeCount
+  });
+
+  document.getElementById('week-output').classList.remove('hidden');
+}
+
+function downloadWeekCard() {
+  const canvas = document.getElementById('weekCanvas');
+  canvas.toBlob(function(blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'week-in-review.png';
+    document.body.appendChild(a); a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  }, 'image/png');
+}
 
 // ================================================================
 // WEEK IN REVIEW CARD — drawCard() only
