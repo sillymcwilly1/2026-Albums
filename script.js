@@ -458,6 +458,66 @@ async function loadRankings() {
     return '<div class="rankings-item '+rankClass+'" onclick="openAlbum(\''+r.albums.spotify_id+'\')"><div class="rank-num">'+(i+1)+'</div><img src="'+r.albums.image_url+'" alt="'+r.albums.name+'" /><div class="rankings-item-info"><h3>'+r.albums.name+'</h3><p>'+r.albums.artist+' &nbsp;·&nbsp; '+(r.albums.release_year||'')+'</p>'+topSongs+comment+'</div><div class="big-rating">'+r.rating+'</div></div>';
   }).join('');
 }
+// ---- Card canvas constants + helpers ----
+const CW = 1080, CH = 1920, PAD = 64;
+
+function fit(ctx, text, maxW) {
+  if (!text) return '';
+  if (ctx.measureText(text).width <= maxW) return text;
+  let lo = 0, hi = text.length;
+  while (lo < hi - 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    ctx.measureText(text.substring(0, mid) + '…').width <= maxW ? (lo = mid) : (hi = mid);
+  }
+  return text.substring(0, lo) + '…';
+}
+
+function rrect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+function starburst(ctx, cx, cy, outerR, rays, color) {
+  ctx.save(); ctx.fillStyle = color;
+  const innerR = outerR * 0.38;
+  for (let i = 0; i < rays; i++) {
+    const a1=(i/rays)*Math.PI*2, a2=a1+Math.PI/rays, a3=a1+(Math.PI*2)/rays;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a1)*outerR, cy+Math.sin(a1)*outerR);
+    ctx.lineTo(cx+Math.cos(a2)*innerR, cy+Math.sin(a2)*innerR);
+    ctx.lineTo(cx+Math.cos(a3)*outerR, cy+Math.sin(a3)*outerR);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function dotgrid(ctx, x, y, cols, rows, gap, r, color) {
+  ctx.fillStyle = color;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      ctx.beginPath(); ctx.arc(x+col*gap, y+row*gap, r, 0, Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+function rule(ctx, x, y, w, color) {
+  ctx.save();
+  const cx = x + w/2;
+  ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(cx-24,y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+24,y); ctx.lineTo(x+w,y); ctx.stroke();
+  ctx.globalAlpha = 1;
+  [-14,0,14].forEach(function(dx,i) {
+    ctx.fillStyle = color; ctx.globalAlpha = i===1?0.9:0.3;
+    ctx.beginPath(); ctx.arc(cx+dx,y,i===1?4:2.5,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha = 1; ctx.restore();
+}
+
 function sampleImageColor(img, sampleCount) {
   if (!img) return [29, 185, 84];
   try {
