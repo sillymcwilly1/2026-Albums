@@ -702,8 +702,6 @@ function downloadWeekCard() {
 // Nothing is allowed to draw outside its zone.
 // ================================================================
 
-const CW = 1080, CH = 1920, PAD = 72;
-
 const Z = {
   headerEnd:   180,
   statsEnd:    440,
