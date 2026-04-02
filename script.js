@@ -458,6 +458,45 @@ async function loadRankings() {
     return '<div class="rankings-item '+rankClass+'" onclick="openAlbum(\''+r.albums.spotify_id+'\')"><div class="rank-num">'+(i+1)+'</div><img src="'+r.albums.image_url+'" alt="'+r.albums.name+'" /><div class="rankings-item-info"><h3>'+r.albums.name+'</h3><p>'+r.albums.artist+' &nbsp;·&nbsp; '+(r.albums.release_year||'')+'</p>'+topSongs+comment+'</div><div class="big-rating">'+r.rating+'</div></div>';
   }).join('');
 }
+function sampleImageColor(img, sampleCount) {
+  if (!img) return [29, 185, 84];
+  try {
+    const size = 40;
+    const off = document.createElement('canvas');
+    off.width = size; off.height = size;
+    const oc = off.getContext('2d');
+    oc.drawImage(img, 0, 0, size, size);
+    const pixels = oc.getImageData(0, 0, size, size).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    const step = Math.max(1, Math.floor((size * size) / sampleCount)) * 4;
+    for (let i = 0; i < pixels.length; i += step) {
+      r += pixels[i]; g += pixels[i+1]; b += pixels[i+2]; count++;
+    }
+    return [Math.round(r/count), Math.round(g/count), Math.round(b/count)];
+  } catch(e) { return [29, 185, 84]; }
+}
+
+function blendColors(colorArr) {
+  if (!colorArr || !colorArr.length) return [29, 185, 84];
+  return [
+    Math.round(colorArr.reduce(function(s,c){return s+c[0];},0) / colorArr.length),
+    Math.round(colorArr.reduce(function(s,c){return s+c[1];},0) / colorArr.length),
+    Math.round(colorArr.reduce(function(s,c){return s+c[2];},0) / colorArr.length)
+  ];
+}
+
+function lighten(rgb, t) {
+  return [
+    Math.round(rgb[0] + (255-rgb[0])*t),
+    Math.round(rgb[1] + (255-rgb[1])*t),
+    Math.round(rgb[2] + (255-rgb[2])*t)
+  ];
+}
+
+function toRgb(rgb, alpha) {
+  if (alpha !== undefined) return 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+alpha+')';
+  return 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')';
+}
 
 async function generateWeekReview() {
   const endDate = new Date();
