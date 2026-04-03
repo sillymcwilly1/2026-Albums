@@ -1111,8 +1111,7 @@ function drawCard(d) {
     });
     if (rawMax===0) rawMax=1;
     const maxV = Math.ceil((rawMax*1.2)/10)*10;
-
-    function ptY(v) { return Math.min(cBot, Math.max(cTop, cBot-(v/maxV)*cH)); }
+    var ptY = function(v) { return Math.min(cBot, Math.max(cTop, cBot-(v/maxV)*cH)); };
 
     [0,0.5,1].forEach(function(pct) {
       const gy=cBot-pct*cH;
@@ -1137,7 +1136,7 @@ function drawCard(d) {
     });
     ctx.textAlign='left';
 
-    const lineColors=d.lineColors||['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
+var lineColors=d.lineColors||['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
 
     (d.top5forChart||[]).forEach(function(album,ai) {
       const pts=dates.map(function(dt,i) {
