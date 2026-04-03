@@ -760,9 +760,13 @@ function drawCard(d) {
   ctx.fillRect(0, 0, 8, CH);
 
   // ── ZONE 1: MASTHEAD (0–170) ───────────────────────────────
-  ctx.fillStyle = toRgbC(A, 0.5);
-  ctx.font = 'italic 20px "DM Sans",sans-serif';
-  ctx.fillText('week in review', PAD+4, 54);
+// Instagram story UI safe zone — 80px of breathing room at top
+// (time, battery, camera icon float here without competing with content)
+ctx.fillStyle = toRgbC(darkenC(A, 0.6));
+ctx.fillRect(0, 0, CW, 80);
+ctx.fillStyle = toRgbC(A, 0.5);
+ctx.font = 'italic 20px "DM Sans",sans-serif';
+ctx.fillText('week in review', PAD+4, 114);
 
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const eDateCopy = new Date(d.endDate); eDateCopy.setDate(eDateCopy.getDate()-1);
@@ -770,16 +774,16 @@ function drawCard(d) {
   ctx.textAlign = 'right';
   ctx.fillStyle = toRgbC(A, 0.4);
   ctx.font = '400 20px "DM Sans",sans-serif';
-  ctx.fillText(dateStr.toUpperCase(), CW-PAD, 54);
+  ctx.fillText(dateStr.toUpperCase(), CW-PAD, 114);
   ctx.textAlign = 'left';
 
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'italic bold 84px Georgia,serif';
-  ctx.fillText('Album ', PAD, 148);
-  const awW = ctx.measureText('Album ').width;
-  ctx.fillStyle = toRgbC(A);
-  ctx.font = 'bold 84px Georgia,serif';
-  ctx.fillText('Rater', PAD+awW, 148);
+ctx.fillStyle = '#ffffff';
+ctx.font = 'italic bold 84px Georgia,serif';
+ctx.fillText('Album ', PAD, 208);
+const awW = ctx.measureText('Album ').width;
+ctx.fillStyle = toRgbC(A);
+ctx.font = 'bold 84px Georgia,serif';
+ctx.fillText('Rater', PAD+awW, 208);
 
   hRuleC(ctx, 170, PAD, CW-PAD, '#ffffff', 0.12);
 
@@ -1018,9 +1022,16 @@ function drawCard(d) {
     ctx.fillText(b.label, barX-12, rowY+rowH*0.72);
     ctx.textAlign = 'left';
 
-    // Track
+// Track — always drawn regardless of count
     ctx.fillStyle = '#1e1c18';
     rrectC(ctx, barX, rowY, barAreaW, rowH, rowH/2); ctx.fill();
+
+    // If bucket is empty, show a zero label so the row is always visible
+    if (prior === 0 && wk === 0) {
+      ctx.fillStyle = '#3a3830';
+      ctx.font = '400 18px "DM Sans",sans-serif';
+      ctx.fillText('0', barX+16, rowY+rowH*0.70);
+    }
 
     // Prior bar
     if (priorW > 0) {
