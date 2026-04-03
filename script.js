@@ -1133,6 +1133,7 @@ function drawCard(d) {
       if (i===0||dtO.getDay()===1) {
         const px=cX+(i/Math.max(dates.length-1,1))*cW;
         ctx.fillText((dtO.getMonth()+1)+'/'+dtO.getDate(), px, cBot+24);
+      }
     });
     ctx.textAlign='left';
 
