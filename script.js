@@ -759,37 +759,40 @@ function drawCard(d) {
   ctx.fillStyle = toRgbC(A);
   ctx.fillRect(0, 0, 8, CH);
 
-  // ── ZONE 1: MASTHEAD (0–170) ───────────────────────────────
-// Instagram story UI safe zone — 80px of breathing room at top
-// (time, battery, camera icon float here without competing with content)
-ctx.fillStyle = toRgbC(darkenC(A, 0.6));
-ctx.fillRect(0, 0, CW, 80);
-ctx.fillStyle = toRgbC(A, 0.5);
-ctx.font = 'italic 20px "DM Sans",sans-serif';
-ctx.fillText('week in review', PAD+4, 114);
+  // ── ZONE 1: MASTHEAD (0–230) ───────────────────────────────
+  // Top 60px = Instagram UI safe zone (time, battery, camera icon)
+  // Dark band sits behind it so chrome doesn't clash with content
+  ctx.fillStyle = toRgbC(darkenC(A, 0.88));
+  ctx.fillRect(0, 0, CW, 60);
+
+  // Subtitle + date — sit in safe zone, very subtle
+  ctx.fillStyle = toRgbC(A, 0.35);
+  ctx.font = 'italic 18px "DM Sans",sans-serif';
+  ctx.fillText('week in review', PAD+4, 42);
 
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const eDateCopy = new Date(d.endDate); eDateCopy.setDate(eDateCopy.getDate()-1);
   const dateStr = months[d.startDate.getMonth()]+' '+d.startDate.getDate()+' – '+months[eDateCopy.getMonth()]+' '+eDateCopy.getDate()+', '+eDateCopy.getFullYear();
   ctx.textAlign = 'right';
-  ctx.fillStyle = toRgbC(A, 0.4);
-  ctx.font = '400 20px "DM Sans",sans-serif';
-  ctx.fillText(dateStr.toUpperCase(), CW-PAD, 114);
+  ctx.fillStyle = toRgbC(A, 0.3);
+  ctx.font = '400 18px "DM Sans",sans-serif';
+  ctx.fillText(dateStr.toUpperCase(), CW-PAD, 42);
   ctx.textAlign = 'left';
 
-ctx.fillStyle = '#ffffff';
-ctx.font = 'italic bold 84px Georgia,serif';
-ctx.fillText('Album ', PAD, 208);
-const awW = ctx.measureText('Album ').width;
-ctx.fillStyle = toRgbC(A);
-ctx.font = 'bold 84px Georgia,serif';
-ctx.fillText('Rater', PAD+awW, 208);
+  // Wordmark — below safe zone, 62px font (was 84px) so it fits with breathing room
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'italic bold 62px Georgia,serif';
+  ctx.fillText('Album ', PAD, 138);
+  const awW = ctx.measureText('Album ').width;
+  ctx.fillStyle = toRgbC(A);
+  ctx.font = 'bold 62px Georgia,serif';
+  ctx.fillText('Rater', PAD+awW, 138);
 
-  hRuleC(ctx, 170, PAD, CW-PAD, '#ffffff', 0.12);
+  hRuleC(ctx, 158, PAD, CW-PAD, '#ffffff', 0.12);
 
-  // ── ZONE 2: HERO ALBUM #1 (170–560) ───────────────────────
+  // ── ZONE 2: HERO ALBUM #1 (158–560) ───────────────────────
   const artSz = 310;
-  const artX = PAD, artY = 192;
+  const artX = PAD, artY = 174; // 16px below rule — clear of wordmark
 
   if (d.artImages && d.artImages[0]) {
     ctx.save();
@@ -917,6 +920,7 @@ ctx.fillText('Rater', PAD+awW, 208);
   hRuleC(ctx, 762, PAD, CW-PAD, '#ffffff', 0.1);
 
   // Each stat gets exactly 248px — no crowding
+  // Stats band: y=760–870 = 110px. Label at 785, number at 848 = vertically centered.
   const sCols = [PAD, PAD+248, PAD+496, PAD+744];
   const sData = [
     {val:String(d.totalRated),  label:'RATED',    c:A},
@@ -927,9 +931,9 @@ ctx.fillText('Rater', PAD+awW, 208);
   sData.forEach(function(st,i) {
     const sx=sCols[i];
     ctx.fillStyle=toRgbC(st.c,0.5); ctx.font='600 18px "DM Sans",sans-serif';
-    ctx.fillText(st.label, sx, 800);
-    ctx.fillStyle=toRgbC(st.c); ctx.font='italic bold 62px Georgia,serif';
-    ctx.fillText(st.val, sx, 860);
+    ctx.fillText(st.label, sx, 785);
+    ctx.fillStyle=toRgbC(st.c); ctx.font='italic bold 56px Georgia,serif';
+    ctx.fillText(st.val, sx, 848);
   });
 
   hRuleC(ctx, 870, PAD, CW-PAD, '#ffffff', 0.08);
@@ -1009,7 +1013,7 @@ ctx.fillText('Rater', PAD+awW, 208);
 
   bktDefs.forEach(function(b, bi) {
     const rowY = 1152 + bi*(rowH+rowGap);
-    if (rowY+rowH > 1330) return;
+    // No cutoff guard — all 4 rows always render regardless of count
     const prior = bkts[b.key]||0;
     const wk = wkBkts[b.key]||0;
     const priorW = Math.round((prior/maxBktTotal)*barAreaW);
@@ -1022,14 +1026,14 @@ ctx.fillText('Rater', PAD+awW, 208);
     ctx.fillText(b.label, barX-12, rowY+rowH*0.72);
     ctx.textAlign = 'left';
 
-// Track — always drawn regardless of count
+    // Track — always drawn
     ctx.fillStyle = '#1e1c18';
     rrectC(ctx, barX, rowY, barAreaW, rowH, rowH/2); ctx.fill();
 
-    // If bucket is empty, show a zero label so the row is always visible
+    // Empty bucket: show "0" so the row is always meaningful
     if (prior === 0 && wk === 0) {
       ctx.fillStyle = '#3a3830';
-      ctx.font = '400 18px "DM Sans",sans-serif';
+      ctx.font = '400 20px "DM Sans",sans-serif';
       ctx.fillText('0', barX+16, rowY+rowH*0.70);
     }
 
