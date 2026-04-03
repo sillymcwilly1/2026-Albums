@@ -1083,15 +1083,15 @@ function drawCard(d) {
 
   hRuleC(ctx, 1342, PAD, CW-PAD, '#ffffff', 0.08);
 
-  // ── ZONE 7: PLAY TIMELINE (1340–1560) ────────────────────
+  // ── ZONE 7: PLAY TIMELINE (1470–1730) ────────────────────
   ctx.fillStyle = '#8a8070';
   ctx.font = '600 20px "DM Sans",sans-serif';
-  ctx.fillText('PLAY TIMELINE', PAD, 1380);
+  ctx.fillText('PLAY TIMELINE', PAD, 1510);
 
   // Hard bounds — chart can NEVER draw outside these
   const cX = PAD+64;
-  const cTop = 1398;
-  const cBot = 1534;
+  const cTop = 1528;
+  const cBot = 1700;
   const cW = CW-PAD-cX-PAD;
   const cH = cBot-cTop;
 
@@ -1133,7 +1133,6 @@ function drawCard(d) {
       if (i===0||dtO.getDay()===1) {
         const px=cX+(i/Math.max(dates.length-1,1))*cW;
         ctx.fillText((dtO.getMonth()+1)+'/'+dtO.getDate(), px, cBot+24);
-      }
     });
     ctx.textAlign='left';
 
@@ -1173,28 +1172,17 @@ function drawCard(d) {
     });
   }
 
-  hRuleC(ctx, 1562, PAD, CW-PAD, '#ffffff', 0.08);
+  hRuleC(ctx, 1730, PAD, CW-PAD, '#ffffff', 0.08);
 
-  // ── ZONE 8: FOOTER (1560–1920) ────────────────────────────
-  ctx.fillStyle = toRgbC(A, 0.15);
-  ctx.beginPath(); ctx.arc(CW/2, 1920, 620, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = toRgbC(B, 0.1);
-  ctx.beginPath(); ctx.arc(180, 1920, 400, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = toRgbC(C, 0.08);
-  ctx.beginPath(); ctx.arc(900, 1920, 350, 0, Math.PI*2); ctx.fill();
+  // ── ZONE 8: FOOTER (1730–1920) — clean dark close ─────────
+  ctx.fillStyle = toRgbC(A, 0.12);
+  ctx.beginPath(); ctx.arc(CW/2, 1920, 520, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = toRgbC(B, 0.08);
+  ctx.beginPath(); ctx.arc(180, 1920, 340, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = toRgbC(C, 0.06);
+  ctx.beginPath(); ctx.arc(900, 1920, 300, 0, Math.PI*2); ctx.fill();
 
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'italic bold 68px Georgia,serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('Album Rater', CW/2, 1726);
-  ctx.fillStyle = toRgbC(A, 0.6);
-  ctx.font = '400 22px "DM Sans",sans-serif';
-  ctx.fillText('sillymcwilly1.github.io/2026-Albums', CW/2, 1768);
-  ctx.fillStyle = toRgbC(A, 0.3);
-  ctx.font = '600 18px "DM Sans",sans-serif';
-  ctx.fillText('WEEK IN REVIEW', CW/2, 1806);
-  ctx.textAlign = 'left';
-
+  // Bottom edge — vivid color stripe only
   ctx.fillStyle = toRgbC(A);
   ctx.fillRect(0, CH-6, CW, 6);
 } // ← end drawCard
