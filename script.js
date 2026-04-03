@@ -548,11 +548,10 @@ async function generateWeekReview() {
     });
   }));
 
-  const sampledColors = artImages.map(function(img) { return sampleImageColor(img, 200); });
-  const blended = blendColors(sampledColors);
-  const accentColors = sampledColors.map(function(c) {
-    return Math.max(c[0], c[1], c[2]) < 60 ? lighten(c, 0.4) : c;
-  });
+const sampledColors = artImages.map(function(img) { return sampleVividColor(img); });
+const blended = sampledColors[0] || [29, 185, 84];
+const accentColors = sampledColors;
+  
 
   // All-time rating distribution for stacked bar
   const { data: allRatings } = await db.from('ratings').select('rating');
