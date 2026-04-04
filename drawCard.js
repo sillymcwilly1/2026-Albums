@@ -1,53 +1,61 @@
 // ================================================================
-// WEEK IN REVIEW — drawCard() + helpers
+// WEEK IN REVIEW — drawCard()
 //
-// Design: bold color-blocked background, vivid per-album accent
-// colors sampled for saturation (not average), editorial hierarchy.
+// FORMAT: Collage poster. No dark background. The albums ARE the card.
 //
-// Zone map (1080 × 1920 canvas):
-//   0    –  170   Masthead (dark charcoal)
-//   170  –  560   Hero album #1
-//   560  –  760   Albums #2 and #3 side by side
-//   760  –  870   Stats row
-//   870  – 1090   Starred songs (3 album columns)
-//   1090 – 1340   Rating distribution bars
-//   1340 – 1560   Play timeline
-//   1560 – 1920   Footer (dark)
+// LAYOUT (1080 × 1920):
+//   0    –  540   Slayyyter zone: vivid album-1 color, score hero
+//   490  –  610   Diagonal sepia band (album 3 color)
+//   540  – 1920   Warm cream-gold zone (album 2 color tint)
+//   560  –  770   Albums 2 & 3 cards (white cards on cream)
+//   770  –  930   Heat map grid
+//   930  – 1200   Setlist (starred songs)
+//   1200 – 1920   Red footer band with stats
+//
+// COLORS: sampled from actual album art — vivid saturation sampling
 // ================================================================
 
-const CW_CARD = 1080, CH_CARD = 1920, PAD_CARD = 56;
+var CW_CARD  = 1080;
+var CH_CARD  = 1920;
+var PAD_CARD = 56;
 
-// ── Color helpers ──────────────────────────────────────────────
+// ── Color helpers ─────────────────────────────────────────────
 
-// Sample the most SATURATED pixel from album art (not the average).
-// This gives us vivid edge colors like Spotify Wrapped.
 function sampleVividColor(img) {
-  if (!img) return [29, 185, 84];
+  if (!img) return [232, 0, 26];
   try {
-    const size = 60;
-    const off = document.createElement('canvas');
+    var size = 80;
+    var off  = document.createElement('canvas');
     off.width = size; off.height = size;
-    const oc = off.getContext('2d');
+    var oc   = off.getContext('2d');
     oc.drawImage(img, 0, 0, size, size);
-    const pixels = oc.getImageData(0, 0, size, size).data;
-    let bestR = 29, bestG = 185, bestB = 84, bestSat = 0;
-    for (let i = 0; i < pixels.length; i += 4) {
-      const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
-      const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
-      const sat = mx - mn;
-      if (sat > bestSat && mx > 80) {
+    var px   = oc.getImageData(0, 0, size, size).data;
+    var bestR = 232, bestG = 0, bestB = 26, bestSat = 0;
+    for (var i = 0; i < px.length; i += 4) {
+      var r = px[i], g = px[i+1], b = px[i+2];
+      var mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+      var sat = mx - mn;
+      if (sat > bestSat && mx > 60) {
         bestSat = sat; bestR = r; bestG = g; bestB = b;
       }
     }
-    // Boost: amplify the vivid color for Spotify-level pop
-    const mx = Math.max(bestR, bestG, bestB);
-    const boost = 255 / Math.max(mx, 1);
+    var peak  = Math.max(bestR, bestG, bestB);
+    var boost = 220 / Math.max(peak, 1);
     return [
-      Math.min(255, Math.round(bestR * boost * 0.85)),
-      Math.min(255, Math.round(bestG * boost * 0.85)),
-      Math.min(255, Math.round(bestB * boost * 0.85))
+      Math.min(255, Math.round(bestR * boost)),
+      Math.min(255, Math.round(bestG * boost)),
+      Math.min(255, Math.round(bestB * boost))
     ];
-  } catch(e) { return [29, 185, 84]; }
+  } catch(e) { return [232, 0, 26]; }
+}
+
+function toC(rgb, alpha) {
+  if (alpha !== undefined) return 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+alpha+')';
+  return 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')';
+}
+
+function darkenC(rgb, t) {
+  return [Math.round(rgb[0]*(1-t)), Math.round(rgb[1]*(1-t)), Math.round(rgb[2]*(1-t))];
 }
 
 function lightenC(rgb, t) {
@@ -58,13 +66,15 @@ function lightenC(rgb, t) {
   ];
 }
 
-function darkenC(rgb, t) {
-  return [Math.round(rgb[0]*(1-t)), Math.round(rgb[1]*(1-t)), Math.round(rgb[2]*(1-t))];
-}
-
-function toRgbC(rgb, alpha) {
-  if (alpha !== undefined) return 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+alpha+')';
-  return 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')';
+// Make a warm cream tinted with an album color for the bg
+function creamTint(rgb) {
+  // Blend toward FFF0C0 (warm cream) keeping some album character
+  var cream = [255, 240, 192];
+  return [
+    Math.round(rgb[0]*0.15 + cream[0]*0.85),
+    Math.round(rgb[1]*0.15 + cream[1]*0.85),
+    Math.round(rgb[2]*0.15 + cream[2]*0.85)
+  ];
 }
 
 // ── Canvas helpers ─────────────────────────────────────────────
@@ -72,15 +82,15 @@ function toRgbC(rgb, alpha) {
 function fitC(ctx, text, maxW) {
   if (!text) return '';
   if (ctx.measureText(text).width <= maxW) return text;
-  let lo = 0, hi = text.length;
+  var lo = 0, hi = text.length;
   while (lo < hi - 1) {
-    const mid = Math.floor((lo+hi)/2);
+    var mid = Math.floor((lo+hi)/2);
     ctx.measureText(text.substring(0,mid)+'…').width <= maxW ? (lo=mid) : (hi=mid);
   }
   return text.substring(0,lo)+'…';
 }
 
-function rrectC(ctx, x, y, w, h, r) {
+function rrC(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
   ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
@@ -89,501 +99,446 @@ function rrectC(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function hRuleC(ctx, y, x1, x2, color, alpha) {
-  ctx.save();
-  ctx.strokeStyle = color; ctx.globalAlpha = alpha||0.15; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke();
-  ctx.globalAlpha = 1; ctx.restore();
-}
-
-// ── Main draw function ─────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────
 
 function drawCard(d) {
-  const canvas = document.getElementById('weekCanvas');
-  const ctx = canvas.getContext('2d');
+  var canvas = document.getElementById('weekCanvas');
+  var ctx    = canvas.getContext('2d');
   ctx.clearRect(0, 0, CW_CARD, CH_CARD);
 
-  const PAD = PAD_CARD;
-  const CW = CW_CARD;
-  const CH = CH_CARD;
+  var CW  = CW_CARD;
+  var CH  = CH_CARD;
+  var PAD = PAD_CARD;
 
-  // Vivid accent colors sampled for saturation, not average
-  const vivid = (d.artImages||[]).map(function(img) { return sampleVividColor(img); });
-  const A = vivid[0]||[255,140,0];
-  const B = vivid[1]||[148,103,189];
-  const C = vivid[2]||[44,160,101];
+  // Sample vivid colors from each album's art
+  var A = (d.artImages && d.artImages[0]) ? sampleVividColor(d.artImages[0]) : [232,0,26];
+  var B = (d.artImages && d.artImages[1]) ? sampleVividColor(d.artImages[1]) : [196,149,106];
+  var C = (d.artImages && d.artImages[2]) ? sampleVividColor(d.artImages[2]) : [232,201,106];
 
-  // ── BACKGROUND — Spotify-style bold color blocking ─────────
-  ctx.fillStyle = '#0f0d0b';
-  ctx.fillRect(0, 0, CW, CH);
+  // Darken A for depth effects
+  var Ad  = darkenC(A, 0.35);
+  var Adl = darkenC(A, 0.15);
 
-  // Hero zone tinted with album 1
-  ctx.fillStyle = toRgbC(darkenC(A, 0.72));
-  ctx.fillRect(0, 0, CW, 760);
+  // Sepia band = blend of B and C, slightly muted
+  var sepia = [
+    Math.round((B[0]+C[0])/2 * 0.75 + 80),
+    Math.round((B[1]+C[1])/2 * 0.75 + 60),
+    Math.round((B[2]+C[2])/2 * 0.75 + 40)
+  ];
 
-  // Album 2+3 zone
-  ctx.fillStyle = '#111018';
-  ctx.fillRect(0, 560, CW, 310);
+  // Bottom cream = warm tint of B
+  var cream = creamTint(B);
 
-  // Stats zone
-  ctx.fillStyle = toRgbC(darkenC(A, 0.80));
-  ctx.fillRect(0, 760, CW, 110);
+  // ── BACKGROUND ZONES ────────────────────────────────────────
 
-  // Songs zone
-  ctx.fillStyle = '#0d0c10';
-  ctx.fillRect(0, 870, CW, 220);
+  // Top zone: album 1 vivid color (0–540)
+  ctx.fillStyle = toC(A);
+  ctx.fillRect(0, 0, CW, 540);
 
-  // Rating zone
-  ctx.fillStyle = '#100f0d';
-  ctx.fillRect(0, 1090, CW, 250);
+  // Depth glow circles in top zone
+  ctx.fillStyle = toC(Ad, 0.6);
+  ctx.beginPath(); ctx.arc(CW*0.85, 100, 400, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = toC(lightenC(A, 0.25), 0.12);
+  ctx.beginPath(); ctx.arc(CW*0.82, 80, 220, 0, Math.PI*2); ctx.fill();
 
-  // Chart zone
-  ctx.fillStyle = '#0d0c10';
-  ctx.fillRect(0, 1340, CW, 220);
+  // Bottom zone: warm cream tinted with album 2 (540–1920)
+  ctx.fillStyle = toC(cream);
+  ctx.fillRect(0, 540, CW, CH-540);
 
-  // Footer
-  ctx.fillStyle = '#0a0908';
-  ctx.fillRect(0, 1560, CW, CH-1560);
+  // Soft glow from album 2 in bottom zone
+  var grad2 = ctx.createRadialGradient(160, 950, 0, 160, 950, 500);
+  grad2.addColorStop(0, toC(B, 0.2));
+  grad2.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad2;
+  ctx.fillRect(0, 540, CW, CH-540);
 
-  // Large decorative circles — Spotify Wrapped geometry
-  ctx.fillStyle = toRgbC(A, 0.18);
-  ctx.beginPath(); ctx.arc(CW+80, -80, 380, 0, Math.PI*2); ctx.fill();
+  // Diagonal sepia band across the join (album 3 color bridge)
+  ctx.fillStyle = toC(sepia);
+  ctx.beginPath();
+  ctx.moveTo(0, 490);
+  ctx.lineTo(CW, 560);
+  ctx.lineTo(CW, 600);
+  ctx.lineTo(0, 534);
+  ctx.closePath();
+  ctx.fill();
 
-  ctx.fillStyle = toRgbC(B, 0.13);
-  ctx.beginPath(); ctx.arc(-60, CH-200, 340, 0, Math.PI*2); ctx.fill();
+  // ── ALBUM 1 ART — tilted, right side, large ─────────────────
+  var artSz = 400;
+  var artX  = CW - artSz + 60;
+  var artY  = 100;
 
-  ctx.fillStyle = toRgbC(C, 0.1);
-  ctx.beginPath(); ctx.arc(CW+40, 1200, 280, 0, Math.PI*2); ctx.fill();
+  ctx.save();
+  ctx.translate(artX + artSz/2, artY + artSz/2);
+  ctx.rotate(4 * Math.PI / 180);
+  ctx.translate(-(artX + artSz/2), -(artY + artSz/2));
 
-  // Left edge stripe — album 1 vivid
-  ctx.fillStyle = toRgbC(A);
-  ctx.fillRect(0, 0, 8, CH);
+  // Art bg
+  ctx.fillStyle = toC(Ad);
+  ctx.fillRect(artX, artY, artSz, artSz);
 
-  // ── ZONE 1: MASTHEAD (0–230) ───────────────────────────────
-  // Top 60px = Instagram UI safe zone (time, battery, camera icon)
-  // Dark band sits behind it so chrome doesn't clash with content
-  ctx.fillStyle = toRgbC(darkenC(A, 0.88));
-  ctx.fillRect(0, 0, CW, 60);
-
-  // Subtitle + date — sit in safe zone, very subtle
-  ctx.fillStyle = toRgbC(A, 0.35);
-  ctx.font = 'italic 18px "DM Sans",sans-serif';
-  ctx.fillText('week in review', PAD+4, 42);
-
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const eDateCopy = new Date(d.endDate); eDateCopy.setDate(eDateCopy.getDate()-1);
-  const dateStr = months[d.startDate.getMonth()]+' '+d.startDate.getDate()+' – '+months[eDateCopy.getMonth()]+' '+eDateCopy.getDate()+', '+eDateCopy.getFullYear();
-  ctx.textAlign = 'right';
-  ctx.fillStyle = toRgbC(A, 0.3);
-  ctx.font = '400 18px "DM Sans",sans-serif';
-  ctx.fillText(dateStr.toUpperCase(), CW-PAD, 42);
-  ctx.textAlign = 'left';
-
-  // Wordmark — below safe zone, 62px font (was 84px) so it fits with breathing room
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'italic bold 62px Georgia,serif';
-  ctx.fillText('Album ', PAD, 138);
-  const awW = ctx.measureText('Album ').width;
-  ctx.fillStyle = toRgbC(A);
-  ctx.font = 'bold 62px Georgia,serif';
-  ctx.fillText('Rater', PAD+awW, 138);
-
-  hRuleC(ctx, 158, PAD, CW-PAD, '#ffffff', 0.12);
-
-  // ── ZONE 2: HERO ALBUM #1 (158–560) ───────────────────────
-  const artSz = 310;
-  const artX = PAD, artY = 174; // 16px below rule — clear of wordmark
-
+  // Draw album art if available
   if (d.artImages && d.artImages[0]) {
-    ctx.save();
-    rrectC(ctx, artX, artY, artSz, artSz, 12);
-    ctx.clip();
     ctx.drawImage(d.artImages[0], artX, artY, artSz, artSz);
-    ctx.restore();
   } else {
-    ctx.fillStyle = toRgbC(darkenC(A, 0.4));
-    rrectC(ctx, artX, artY, artSz, artSz, 12);
-    ctx.fill();
-    ctx.fillStyle = toRgbC(A, 0.4);
-    ctx.font = '80px "DM Sans",sans-serif';
+    // Placeholder texture
+    ctx.fillStyle = toC(A, 0.25);
+    ctx.fillRect(artX, artY, artSz, artSz/2);
+    var plGrid = ctx.createLinearGradient(artX, artY, artX+artSz, artY+artSz);
+    plGrid.addColorStop(0, toC([255,255,255], 0.06));
+    plGrid.addColorStop(1, 'transparent');
+    ctx.fillStyle = plGrid;
+    ctx.fillRect(artX, artY, artSz, artSz);
+    // Grid lines
+    for (var gl = 0; gl < 3; gl++) {
+      ctx.strokeStyle = toC([255,255,255], 0.12);
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(artX, artY+artSz*(gl+1)/4); ctx.lineTo(artX+artSz, artY+artSz*(gl+1)/4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(artX+artSz*(gl+1)/4, artY); ctx.lineTo(artX+artSz*(gl+1)/4, artY+artSz); ctx.stroke();
+    }
+  }
+
+  // Dark strip at bottom of art with album name
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(artX, artY+artSz-60, artSz, 60);
+
+  var r0 = d.top3 && d.top3[0];
+  if (r0) {
+    ctx.fillStyle = toC(A);
+    ctx.font = '600 22px "DM Sans",sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('♪', artX+artSz/2, artY+artSz/2+28);
+    ctx.fillText(fitC(ctx, r0.albums.name.toUpperCase(), artSz-24), artX+artSz/2, artY+artSz-24);
     ctx.textAlign = 'left';
   }
 
-  // #1 badge
-  ctx.fillStyle = toRgbC(A);
-  rrectC(ctx, artX, artY, 60, 38, 6);
-  ctx.fill();
-  ctx.fillStyle = toRgbC(darkenC(A, 0.55));
-  ctx.font = 'bold 20px "DM Sans",sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('#1', artX+30, artY+26);
-  ctx.textAlign = 'left';
+  ctx.restore();
 
-  const r0 = d.top3 && d.top3[0];
-  const heroTx = PAD+artSz+38;
-  const heroMaxW = CW-heroTx-PAD;
+  // ── MASTHEAD ─────────────────────────────────────────────────
+  ctx.fillStyle = 'rgba(255,255,255,0.42)';
+  ctx.font = '300 22px "DM Sans",sans-serif';
+  ctx.fillText('your personal', PAD, 50);
 
-  if (r0) {
-    ctx.fillStyle = toRgbC(A, 0.65);
-    ctx.font = '600 20px "DM Sans",sans-serif';
-    ctx.fillText('ALBUM OF THE WEEK', heroTx, 228);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'italic bold 72px Georgia,serif';
+  ctx.fillText('Album', PAD, 118);
+  var aw = ctx.measureText('Album').width;
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = 'bold 72px Georgia,serif';
+  ctx.fillText('Rater', PAD+aw+16, 118);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 44px "DM Sans",sans-serif';
-    ctx.fillText(fitC(ctx, r0.albums.name, heroMaxW), heroTx, 286);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillRect(PAD, 128, 420, 2);
 
-    ctx.fillStyle = toRgbC(A);
-    ctx.font = '400 28px "DM Sans",sans-serif';
-    ctx.fillText(fitC(ctx, r0.albums.artist, heroMaxW), heroTx, 326);
+  // Date
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var s = d.startDate, eCopy = new Date(d.endDate);
+  eCopy.setDate(eCopy.getDate()-1);
+  var dateStr = months[s.getMonth()]+' '+s.getDate()+' – '+months[eCopy.getMonth()]+' '+eCopy.getDate()+', '+eCopy.getFullYear();
+  ctx.fillStyle = 'rgba(255,255,255,0.32)';
+  ctx.font = '500 22px "DM Sans",sans-serif';
+  ctx.fillText(dateStr.toUpperCase(), PAD, 156);
 
-    // Big score
-    ctx.fillStyle = toRgbC(A);
-    ctx.font = 'italic bold 148px Georgia,serif';
-    ctx.fillText(String(r0.rating), heroTx, 476);
-    const sw = ctx.measureText(String(r0.rating)).width;
-    ctx.fillStyle = toRgbC(A, 0.45);
-    ctx.font = '400 34px "DM Sans",sans-serif';
-    ctx.fillText('/10', heroTx+sw+8, 462);
+  // ── SCORE ────────────────────────────────────────────────────
+  var scoreStr = r0 ? String(r0.rating) : d.avgScore || '—';
+  var scoreParts = scoreStr.split('.');
 
-    const songs0 = (r0.top_songs||[]).slice(0,3);
-    if (songs0.length) {
-      ctx.fillStyle = toRgbC(A, 0.55);
-      ctx.font = '400 20px "DM Sans",sans-serif';
-      ctx.fillText('★ '+songs0.join(' · '), heroTx, 516);
-    }
+  // Ghost score
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.font = 'italic bold 380px Georgia,serif';
+  ctx.fillText(scoreParts[0], 10, 530);
 
-    const m0 = d.albumMinsMap ? (d.albumMinsMap[r0.albums.name]||0) : 0;
-    if (m0 > 0) {
-      ctx.fillStyle = toRgbC(darkenC(A, 0.25));
-      rrectC(ctx, heroTx, 528, 150, 34, 17);
-      ctx.fill();
-      ctx.fillStyle = toRgbC(A);
-      ctx.font = '600 18px "DM Sans",sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(m0+'m this week', heroTx+75, 550);
-      ctx.textAlign = 'left';
-    }
+  // Real score integer
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.font = 'italic bold 300px Georgia,serif';
+  ctx.fillText(scoreParts[0], PAD, 514);
+  var intW = ctx.measureText(scoreParts[0]).width;
+
+  // Decimal
+  if (scoreParts[1]) {
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    ctx.font = 'italic bold 110px Georgia,serif';
+    ctx.fillText('.'+scoreParts[1], PAD+intW+10, 440);
   }
 
-  hRuleC(ctx, 560, PAD, CW-PAD, '#ffffff', 0.08);
+  // /out of 10 — on its own line, no overlap
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.font = 'italic 28px Georgia,serif';
+  ctx.fillText('out of 10', PAD+intW+18, 484);
 
-  // ── ZONE 3: ALBUMS 2 & 3 (560–760) ───────────────────────
-  const aW = Math.floor((CW-PAD*2-20)/2);
-  [[1,B],[2,C]].forEach(function(pair) {
-    const idx=pair[0], col=pair[1];
-    const ax = idx===1 ? PAD : PAD+aW+20;
-    const ay = 572;
-    const r = d.top3 && d.top3[idx];
+  // Album label below score
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '500 22px "DM Sans",sans-serif';
+  var label1 = r0 ? (r0.albums.name.toUpperCase()+' · '+r0.albums.artist.toUpperCase()+' · ALBUM OF THE WEEK') : 'ALBUM OF THE WEEK';
+  ctx.fillText(fitC(ctx, label1, CW-PAD*2), PAD, 548);
 
-    ctx.fillStyle = toRgbC(col, 0.12);
-    rrectC(ctx, ax, ay, aW, 178, 10); ctx.fill();
-    ctx.strokeStyle = toRgbC(col, 0.4); ctx.lineWidth = 1.5;
-    rrectC(ctx, ax, ay, aW, 178, 10); ctx.stroke();
-    ctx.fillStyle = toRgbC(col);
-    ctx.fillRect(ax, ay, aW, 5);
+  // Sepia band label — albums 2 and 3
+  var r1 = d.top3 && d.top3[1];
+  var r2 = d.top3 && d.top3[2];
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.font = 'italic 26px Georgia,serif';
+  var sepiaText = '';
+  if (r1) sepiaText += '#2 '+r1.albums.name+' · '+r1.albums.artist+' · '+r1.rating;
+  if (r1 && r2) sepiaText += '     ';
+  if (r2) sepiaText += '#3 '+r2.albums.name+' · '+r2.albums.artist+' · '+r2.rating;
+  ctx.fillText(fitC(ctx, sepiaText, CW-PAD*2), PAD, 586);
 
-    const sArt = 116;
-    if (d.artImages && d.artImages[idx]) {
+  // ── ALBUMS 2 & 3 CARDS ───────────────────────────────────────
+  var cardY    = 620;
+  var cardH    = 230;
+  var cardGap  = 20;
+  var card1W   = Math.floor((CW - PAD*2 - cardGap) / 2);
+  var card2W   = CW - PAD*2 - cardGap - card1W;
+
+  [r1, r2].forEach(function(r, ci) {
+    if (!r) return;
+    var cx       = PAD + ci*(card1W+cardGap);
+    var cw       = ci === 0 ? card1W : card2W;
+    var col      = ci === 0 ? B : C;
+    var colLight = lightenC(col, 0.55);
+
+    // White card
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx, cardY, cw, cardH);
+
+    // Colored top stripe
+    ctx.fillStyle = toC(col);
+    ctx.fillRect(cx, cardY, cw, 6);
+
+    // Album art
+    var artSzS = 120;
+    var artPad = 12;
+    if (d.artImages && d.artImages[ci+1]) {
       ctx.save();
-      rrectC(ctx, ax+12, ay+14, sArt, sArt, 6); ctx.clip();
-      ctx.drawImage(d.artImages[idx], ax+12, ay+14, sArt, sArt);
+      rrC(ctx, cx+artPad, cardY+artPad+6, artSzS, artSzS, 4);
+      ctx.clip();
+      ctx.drawImage(d.artImages[ci+1], cx+artPad, cardY+artPad+6, artSzS, artSzS);
       ctx.restore();
     } else {
-      ctx.fillStyle = toRgbC(darkenC(col,0.5));
-      rrectC(ctx, ax+12, ay+14, sArt, sArt, 6); ctx.fill();
+      ctx.fillStyle = toC(colLight);
+      ctx.fillRect(cx+artPad, cardY+artPad+6, artSzS, artSzS);
+      // Circle motif placeholder
+      ctx.fillStyle = toC(col, 0.4);
+      ctx.beginPath(); ctx.arc(cx+artPad+artSzS/2, cardY+artPad+6+artSzS/2, artSzS*0.35, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = toC(col, 0.6);
+      ctx.beginPath(); ctx.arc(cx+artPad+artSzS/2, cardY+artPad+6+artSzS/2, artSzS*0.18, 0, Math.PI*2); ctx.fill();
     }
 
-    ctx.fillStyle = toRgbC(col);
-    rrectC(ctx, ax+12, ay+14, 40, 26, 4); ctx.fill();
-    ctx.fillStyle = toRgbC(darkenC(col,0.55));
-    ctx.font = 'bold 15px "DM Sans",sans-serif';
+    // Rank badge on art
+    ctx.fillStyle = toC(col);
+    ctx.fillRect(cx+artPad, cardY+artPad+6, 44, 28);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px "DM Sans",sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('#'+(idx+1), ax+32, ay+31); ctx.textAlign = 'left';
-
-    if (r) {
-      const tx=ax+12+sArt+14, tmx=aW-sArt-38;
-      ctx.fillStyle='#ffffff'; ctx.font='bold 26px "DM Sans",sans-serif';
-      ctx.fillText(fitC(ctx,r.albums.name,tmx), tx, ay+46);
-      ctx.fillStyle=toRgbC(col); ctx.font='400 19px "DM Sans",sans-serif';
-      ctx.fillText(fitC(ctx,r.albums.artist,tmx), tx, ay+72);
-      ctx.fillStyle=toRgbC(col); ctx.font='italic bold 60px Georgia,serif';
-      ctx.fillText(String(r.rating), tx, ay+148);
-      const rw=ctx.measureText(String(r.rating)).width;
-      ctx.fillStyle=toRgbC(col,0.5); ctx.font='400 20px "DM Sans",sans-serif';
-      ctx.fillText('/10', tx+rw+6, ay+138);
-    }
-  });
-
-  // ── ZONE 4: STATS (760–870) ───────────────────────────────
-  hRuleC(ctx, 762, PAD, CW-PAD, '#ffffff', 0.1);
-
-  // Each stat gets exactly 248px — no crowding
-  // Stats band: y=760–870 = 110px. Label at 785, number at 848 = vertically centered.
-  const sCols = [PAD, PAD+248, PAD+496, PAD+744];
-  const sData = [
-    {val:String(d.totalRated),  label:'RATED',    c:A},
-    {val:String(d.totalStarred),label:'STARRED',  c:B},
-    {val:String(Math.round(d.totalMins||0))+'m', label:'MINUTES', c:C},
-    {val:String(d.avgScore),    label:'AVG SCORE',c:A}
-  ];
-  sData.forEach(function(st,i) {
-    const sx=sCols[i];
-    ctx.fillStyle=toRgbC(st.c,0.5); ctx.font='600 18px "DM Sans",sans-serif';
-    ctx.fillText(st.label, sx, 785);
-    ctx.fillStyle=toRgbC(st.c); ctx.font='italic bold 56px Georgia,serif';
-    ctx.fillText(st.val, sx, 848);
-  });
-
-  hRuleC(ctx, 870, PAD, CW-PAD, '#ffffff', 0.08);
-
-  // ── ZONE 5: STARRED SONGS (870–1090) ─────────────────────
-  // Strictly one column per album, color = that album's vivid color only
-  ctx.fillStyle = toRgbC(A, 0.5);
-  ctx.font = '600 20px "DM Sans",sans-serif';
-  ctx.fillText('STARRED THIS WEEK', PAD, 912);
-
-  const songColW = Math.floor((CW-PAD*2-2)/3);
-  const songCX = [PAD, PAD+songColW+1, PAD+songColW*2+2];
-  const songPalette = [A, B, C];
-
-  songCX.forEach(function(cx, ci) {
-    const col = songPalette[ci];
-    const r = d.top3 && d.top3[ci];
-    const albumName = r ? r.albums.name : '';
-    const songs = r && r.top_songs ? r.top_songs.slice(0,5) : [];
-
-    // Album header — this album's vivid color
-    ctx.fillStyle = toRgbC(col);
-    ctx.font = '600 19px "DM Sans",sans-serif';
-    const shortN = fitC(ctx, albumName, songColW-10);
-    ctx.fillText(shortN, cx, 948);
-    // Underline
-    ctx.fillStyle = toRgbC(col, 0.6);
-    ctx.fillRect(cx, 952, ctx.measureText(shortN).width, 2);
-
-    // Songs — always this column's color for dot, white for name
-    songs.forEach(function(song, si) {
-      const sy = 985 + si*38;
-      if (sy > 1080) return;
-      ctx.fillStyle = toRgbC(col, 0.75);
-      ctx.beginPath(); ctx.arc(cx+7, sy-7, 5, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#e4e0d8';
-      ctx.font = '400 20px "DM Sans",sans-serif';
-      ctx.fillText(fitC(ctx, song, songColW-22), cx+18, sy);
-    });
-
-    // Column divider
-    if (ci < 2) {
-      ctx.fillStyle = toRgbC(songPalette[ci+1], 0.25);
-      ctx.fillRect(cx+songColW, 925, 1, 155);
-    }
-  });
-
-  hRuleC(ctx, 1092, PAD, CW-PAD, '#ffffff', 0.08);
-
-  // ── ZONE 6: RATING BARS (1090–1340) ──────────────────────
-  ctx.fillStyle = '#8a8070';
-  ctx.font = '600 20px "DM Sans",sans-serif';
-  ctx.fillText('RATING HISTORY', PAD, 1132);
-
-  // Legend on same line, right-aligned, won't overlap label
-  ctx.fillStyle = '#5a5040'; ctx.font = '400 17px "DM Sans",sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('prior  ·  this week', CW-PAD, 1132);
-  ctx.textAlign = 'left';
-
-  const bkts = d.ratingBuckets||{'1-4':4,'5-6':8,'7-8':21,'9-10':13};
-  const wkBkts = d.weekRatingBuckets||{'1-4':0,'5-6':0,'7-8':0,'9-10':0};
-
-  const bktDefs = [
-    {key:'9-10',label:'9–10',priorFill:'#2e8a3e',newFill:'#7cef8a',textFill:'#c8ffd0'},
-    {key:'7-8', label:'7–8', priorFill:'#1e7a68',newFill:'#8aefdb',textFill:'#c0fff6'},
-    {key:'5-6', label:'5–6', priorFill:'#9a7820',newFill:'#f5d07a',textFill:'#fff4cc'},
-    {key:'1-4', label:'1–4', priorFill:'#9a4830',newFill:'#f5a090',textFill:'#ffd8d0'},
-  ];
-
-  const maxBktTotal = Math.max(1, ...bktDefs.map(function(b) {
-    return (bkts[b.key]||0)+(wkBkts[b.key]||0);
-  }));
-  const barAreaW = CW-PAD*2-90;
-  const barX = PAD+90;
-  const rowH = 40, rowGap = 18;
-
-  bktDefs.forEach(function(b, bi) {
-    const rowY = 1152 + bi*(rowH+rowGap);
-    // No cutoff guard — all 4 rows always render regardless of count
-    const prior = bkts[b.key]||0;
-    const wk = wkBkts[b.key]||0;
-    const priorW = Math.round((prior/maxBktTotal)*barAreaW);
-    const wkW = Math.round((wk/maxBktTotal)*barAreaW);
-
-    // Label
-    ctx.fillStyle = b.priorFill;
-    ctx.font = 'bold 26px "DM Sans",sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(b.label, barX-12, rowY+rowH*0.72);
+    ctx.fillText('#'+(ci+2), cx+artPad+22, cardY+artPad+24);
     ctx.textAlign = 'left';
 
-    // Track — always drawn
-    ctx.fillStyle = '#1e1c18';
-    rrectC(ctx, barX, rowY, barAreaW, rowH, rowH/2); ctx.fill();
+    // Text — right of art
+    var tx   = cx + artPad + artSzS + 16;
+    var tmx  = cw - artSzS - artPad*2 - 16;
+    var tyBase = cardY + artPad + 30;
 
-    // Empty bucket: show "0" so the row is always meaningful
-    if (prior === 0 && wk === 0) {
-      ctx.fillStyle = '#3a3830';
-      ctx.font = '400 20px "DM Sans",sans-serif';
-      ctx.fillText('0', barX+16, rowY+rowH*0.70);
-    }
+    ctx.fillStyle = '#1a1208';
+    ctx.font = 'bold 28px "DM Sans",sans-serif';
+    ctx.fillText(fitC(ctx, r.albums.name, tmx), tx, tyBase);
 
-    // Prior bar
-    if (priorW > 0) {
-      ctx.fillStyle = b.priorFill;
-      rrectC(ctx, barX, rowY, priorW, rowH, rowH/2); ctx.fill();
-      if (wk > 0 && priorW > rowH/2) {
-        ctx.fillRect(barX+rowH/2, rowY, priorW-rowH/2, rowH);
-      }
-      if (priorW > 56) {
-        ctx.fillStyle = b.textFill;
-        ctx.font = 'bold 20px "DM Sans",sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(String(prior), barX+priorW/2, rowY+rowH*0.70);
-        ctx.textAlign = 'left';
-      }
-    }
+    ctx.fillStyle = toC(col);
+    ctx.font = '400 20px "DM Sans",sans-serif';
+    ctx.fillText(fitC(ctx, r.albums.artist, tmx), tx, tyBase+32);
 
-    // This-week stack — bright, no text overlap with prior
-    if (wkW > 0) {
-      const wkX = barX+priorW;
-      ctx.fillStyle = b.newFill;
-      if (priorW > 0) {
-        ctx.fillRect(wkX, rowY, Math.max(wkW-rowH/2, 2), rowH);
-        rrectC(ctx, wkX+wkW-rowH, rowY, rowH, rowH, rowH/2); ctx.fill();
-      } else {
-        rrectC(ctx, wkX, rowY, wkW, rowH, rowH/2); ctx.fill();
-      }
-      // Label only inside if wide enough — uses DIFFERENT x center from prior
-      if (wkW > 52) {
-        ctx.fillStyle = b.textFill;
-        ctx.font = 'bold 20px "DM Sans",sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('+'+wk, wkX+wkW/2, rowY+rowH*0.70);
-        ctx.textAlign = 'left';
-      }
-    }
+    ctx.fillStyle = 'rgba(90,60,30,0.5)';
+    ctx.font = '400 18px "DM Sans",sans-serif';
+    var year = r.albums.release_year || '';
+    ctx.fillText(fitC(ctx, year, tmx), tx, tyBase+56);
 
-    // Fallback: count to the right of bar when both segments too narrow to label
-    if (priorW <= 56 && wkW <= 52 && (prior > 0 || wk > 0)) {
-      const endX = barX+priorW+wkW+10;
-      ctx.fillStyle = '#6a6050'; ctx.font = '400 18px "DM Sans",sans-serif';
-      ctx.fillText(String(prior)+(wk>0?' +'+wk:''), endX, rowY+rowH*0.70);
+    // Score — large, colored, no overlap with /10
+    ctx.fillStyle = toC(col);
+    ctx.font = 'italic bold 64px Georgia,serif';
+    ctx.fillText(String(r.rating), cx+artPad, cardY+cardH-52);
+    var sw = ctx.measureText(String(r.rating)).width;
+
+    // /10 — right of score, vertically aligned, clear gap
+    ctx.fillStyle = 'rgba(90,60,30,0.45)';
+    ctx.font = '400 22px "DM Sans",sans-serif';
+    ctx.fillText('/10', cx+artPad+sw+10, cardY+cardH-60);
+
+    // Minutes + starred count — on their own line below score
+    var minsVal = d.albumMinsMap ? (d.albumMinsMap[r.albums.name]||0) : 0;
+    var songs = r.top_songs ? r.top_songs.length : 0;
+    ctx.fillStyle = 'rgba(90,60,30,0.4)';
+    ctx.font = '400 18px "DM Sans",sans-serif';
+    ctx.fillText((minsVal>0?minsVal+'m · ':'')+songs+' starred', cx+artPad, cardY+cardH-24);
+
+    // Starred songs strip at very bottom
+    ctx.fillStyle = toC(col, 0.1);
+    ctx.fillRect(cx, cardY+cardH-22, cw, 22);
+    if (r.top_songs && r.top_songs.length > 0) {
+      ctx.fillStyle = toC(col, 0.7);
+      ctx.font = '400 17px "DM Sans",sans-serif';
+      var songsStr = '★  '+r.top_songs.slice(0,3).join('  ·  ');
+      ctx.fillText(fitC(ctx, songsStr, cw-24), cx+12, cardY+cardH-6);
     }
   });
 
-  hRuleC(ctx, 1342, PAD, CW-PAD, '#ffffff', 0.08);
+  // ── HEAT MAP ─────────────────────────────────────────────────
+  var hmY   = cardY + cardH + 36;
+  var hmLabelH = 36;
 
-  // ── ZONE 7: PLAY TIMELINE (1470–1730) ────────────────────
-  ctx.fillStyle = '#8a8070';
+  ctx.fillStyle = 'rgba(90,60,30,0.55)';
   ctx.font = '600 20px "DM Sans",sans-serif';
-  ctx.fillText('PLAY TIMELINE', PAD, 1510);
+  ctx.fillText('LISTENING HEAT · THIS WEEK', PAD, hmY+20);
 
-  // Hard bounds — chart can NEVER draw outside these
-  const cX = PAD+64;
-  const cTop = 1528;
-  const cBot = 1700;
-  const cW = CW-PAD-cX-PAD;
-  const cH = cBot-cTop;
+  // Day labels
+  var days    = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  var hmBarW  = Math.floor((CW - PAD*2) / 7);
+  var tileW   = hmBarW - 8;
+  var tileH   = 32;
+  var rowGap  = 10;
+  var albums3 = [
+    { r: d.top3&&d.top3[0], col: A, label: r0 ? fitC(ctx, r0.albums.artist, 160) : 'Album 1' },
+    { r: d.top3&&d.top3[1], col: B, label: r1 ? fitC(ctx, r1.albums.artist, 160) : 'Album 2' },
+    { r: d.top3&&d.top3[2], col: C, label: r2 ? fitC(ctx, r2.albums.artist, 160) : 'Album 3' }
+  ];
 
-  const dates = Object.keys(d.byDate||{}).sort();
+  ctx.fillStyle = 'rgba(90,60,30,0.4)';
+  ctx.font = '400 18px "DM Sans",sans-serif';
+  ctx.textAlign = 'center';
+  days.forEach(function(day, di) {
+    ctx.fillText(day, PAD + di*hmBarW + tileW/2 + 4, hmY+hmLabelH);
+  });
+  ctx.textAlign = 'left';
 
-  if (dates.length < 2) {
-    ctx.fillStyle='#5a5040'; ctx.font='italic 26px Georgia,serif';
-    ctx.textAlign='center';
-    ctx.fillText('not enough data yet', cX+cW/2, cTop+cH/2);
-    ctx.textAlign='left';
-  } else {
-    let rawMax=0;
+  // Heat intensities — simulated from byDate
+  var dates = Object.keys(d.byDate||{}).sort();
+
+  albums3.forEach(function(entry, ai) {
+    var rowY = hmY + hmLabelH + 10 + ai*(tileH+rowGap);
+
+    // Artist label
+    ctx.fillStyle = toC(entry.col);
+    ctx.font = '600 18px "DM Sans",sans-serif';
+    ctx.fillText(entry.label, PAD, rowY+tileH*0.7);
+
+    // Tiles — one per day
+    var maxVal = 1;
     dates.forEach(function(dt) {
-      (d.top5forChart||[]).forEach(function(a) {
-        rawMax=Math.max(rawMax,(d.byDate[dt]&&d.byDate[dt][a])||0);
-      });
-    });
-    if (rawMax===0) rawMax=1;
-    const maxV = Math.ceil((rawMax*1.2)/10)*10;
-
-    function ptY(v) { return Math.min(cBot, Math.max(cTop, cBot-(v/maxV)*cH)); }
-
-    [0,0.5,1].forEach(function(pct) {
-      const gy=cBot-pct*cH;
-      if (gy<cTop||gy>cBot) return;
-      ctx.strokeStyle='#2a2820'; ctx.lineWidth=0.8;
-      ctx.beginPath(); ctx.moveTo(cX,gy); ctx.lineTo(cX+cW,gy); ctx.stroke();
-      if (pct>0) {
-        ctx.fillStyle='#5a5040'; ctx.font='18px "DM Sans",sans-serif';
-        ctx.textAlign='right';
-        ctx.fillText(Math.round(maxV*pct)+'m', cX-8, gy+6);
-        ctx.textAlign='left';
-      }
+      var v = (d.byDate[dt] && entry.r && d.byDate[dt][entry.r.albums.name]) || 0;
+      if (v > maxVal) maxVal = v;
     });
 
-    ctx.fillStyle='#5a5040'; ctx.font='18px "DM Sans",sans-serif'; ctx.textAlign='center';
-    dates.forEach(function(dt,i) {
-      const dtO=new Date(dt+'T00:00:00');
-      if (i===0||dtO.getDay()===1) {
-        const px=cX+(i/Math.max(dates.length-1,1))*cW;
-        ctx.fillText((dtO.getMonth()+1)+'/'+dtO.getDate(), px, cBot+24);
-      }
+    days.forEach(function(day, di) {
+      var dt  = dates[di] || null;
+      var val = dt && entry.r ? ((d.byDate[dt]&&d.byDate[dt][entry.r.albums.name])||0) : 0;
+      var opacity = maxVal > 0 ? Math.max(0.08, val/maxVal*0.9) : 0.08;
+      var tileX = PAD + di*hmBarW + 4;
+
+      ctx.fillStyle = toC(entry.col, opacity);
+      rrC(ctx, tileX, rowY, tileW, tileH, 4);
+      ctx.fill();
     });
-    ctx.textAlign='left';
+  });
 
-    const lineColors=d.lineColors||['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
+  // ── SETLIST ───────────────────────────────────────────────────
+  var slY = hmY + hmLabelH + 10 + 3*(tileH+rowGap) + 40;
+  var divY = slY - 16;
 
-    (d.top5forChart||[]).forEach(function(album,ai) {
-      const pts=dates.map(function(dt,i) {
-        return {px:cX+(i/Math.max(dates.length-1,1))*cW, py:ptY((d.byDate[dt]&&d.byDate[dt][album])||0)};
-      });
-      ctx.beginPath(); ctx.moveTo(pts[0].px,cBot);
-      pts.forEach(function(p){ctx.lineTo(p.px,p.py);}); ctx.lineTo(pts[pts.length-1].px,cBot);
-      ctx.closePath(); ctx.fillStyle=lineColors[ai]+'18'; ctx.fill();
-    });
+  ctx.fillStyle = toC(B, 0.35);
+  ctx.fillRect(PAD, divY, CW-PAD*2, 1);
 
-    (d.top5forChart||[]).forEach(function(album,ai) {
-      const pts=dates.map(function(dt,i) {
-        return {px:cX+(i/Math.max(dates.length-1,1))*cW, py:ptY((d.byDate[dt]&&d.byDate[dt][album])||0)};
-      });
-      ctx.beginPath(); ctx.strokeStyle=lineColors[ai]; ctx.lineWidth=3; ctx.lineJoin='round';
-      ctx.moveTo(pts[0].px,pts[0].py);
-      for (let i=1;i<pts.length;i++) {
-        const cpx=(pts[i-1].px+pts[i].px)/2;
-        ctx.bezierCurveTo(cpx,pts[i-1].py,cpx,pts[i].py,pts[i].px,pts[i].py);
-      }
-      ctx.stroke();
-      pts.forEach(function(p) {
-        ctx.beginPath(); ctx.arc(p.px,p.py,5,0,Math.PI*2);
-        ctx.fillStyle=lineColors[ai]; ctx.fill();
-      });
-    });
+  ctx.fillStyle = 'rgba(90,60,30,0.55)';
+  ctx.font = '600 20px "DM Sans",sans-serif';
+  ctx.fillText('STARRED THIS WEEK', PAD, slY+4);
 
-    let ly=cTop+4;
-    (d.top5forChart||[]).forEach(function(album,ai) {
-      ctx.fillStyle=lineColors[ai]; ctx.fillRect(cX+cW-220,ly+5,16,4);
-      ctx.font='18px "DM Sans",sans-serif'; ctx.fillStyle='#6a6050';
-      ctx.fillText(fitC(ctx,album,196), cX+cW-198, ly+17); ly+=26;
-    });
-  }
+  var totalStarred = d.starredSongs ? d.starredSongs.length : 0;
+  ctx.fillStyle = 'rgba(90,60,30,0.35)';
+  ctx.font = '400 18px "DM Sans",sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(totalStarred+' songs', CW-PAD, slY+4);
+  ctx.textAlign = 'left';
 
-  hRuleC(ctx, 1730, PAD, CW-PAD, '#ffffff', 0.08);
+  // Album color lookup by album name
+  var colorByAlbum = {};
+  if (r0) colorByAlbum[r0.albums.name] = A;
+  if (r1) colorByAlbum[r1.albums.name] = B;
+  if (r2) colorByAlbum[r2.albums.name] = C;
 
-  // ── ZONE 8: FOOTER (1730–1920) — clean dark close ─────────
-  ctx.fillStyle = toRgbC(A, 0.12);
-  ctx.beginPath(); ctx.arc(CW/2, 1920, 520, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = toRgbC(B, 0.08);
-  ctx.beginPath(); ctx.arc(180, 1920, 340, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = toRgbC(C, 0.06);
-  ctx.beginPath(); ctx.arc(900, 1920, 300, 0, Math.PI*2); ctx.fill();
+  var rowH_sl = 34;
+  var maxRows = Math.floor((1180 - (slY+20)) / rowH_sl);
+  var songs   = d.starredSongs || [];
 
-  // Bottom edge — vivid color stripe only
-  ctx.fillStyle = toRgbC(A);
-  ctx.fillRect(0, CH-6, CW, 6);
+  songs.slice(0, maxRows).forEach(function(sg, si) {
+    var ry    = slY + 20 + si*rowH_sl;
+    if (ry + rowH_sl > 1180) return;
+    var col   = colorByAlbum[sg.album] || A;
+    var even  = si%2 === 0;
+
+    // Alternating tint row
+    ctx.fillStyle = toC(col, even ? 0.07 : 0.04);
+    ctx.fillRect(PAD, ry, CW-PAD*2, rowH_sl);
+
+    // Track number
+    ctx.fillStyle = toC(col, 0.75);
+    ctx.font = 'bold 20px "DM Sans",sans-serif';
+    ctx.fillText(String(si+1).padStart(2,'0'), PAD, ry+rowH_sl*0.72);
+
+    // Song name
+    ctx.fillStyle = '#1a1208';
+    ctx.font = '500 22px "DM Sans",sans-serif';
+    ctx.fillText(fitC(ctx, sg.song, 520), PAD+60, ry+rowH_sl*0.72);
+
+    // Artist · album — right-ish
+    ctx.fillStyle = 'rgba(90,60,30,0.5)';
+    ctx.font = '400 18px "DM Sans",sans-serif';
+    ctx.fillText(fitC(ctx, sg.artist, 260), PAD+600, ry+rowH_sl*0.72);
+
+    // Star
+    ctx.fillStyle = toC(col, 0.85);
+    ctx.font = 'bold 20px "DM Sans",sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('★', CW-PAD, ry+rowH_sl*0.72);
+    ctx.textAlign = 'left';
+  });
+
+  // ── FOOTER BAND — stats live here ────────────────────────────
+  var footerY = 1200;
+  var footerH = CH - footerY;
+
+  ctx.fillStyle = toC(A);
+  ctx.fillRect(0, footerY, CW, footerH);
+
+  // Glow in footer
+  var fg = ctx.createRadialGradient(CW*0.8, footerY+footerH*0.5, 0, CW*0.8, footerY+footerH*0.5, 500);
+  fg.addColorStop(0, toC(lightenC(A,0.3), 0.25));
+  fg.addColorStop(1, 'transparent');
+  ctx.fillStyle = fg;
+  ctx.fillRect(0, footerY, CW, footerH);
+
+  // 4 stats — centered in 4 equal columns, no overlap
+  var statsData = [
+    { val: String(d.totalRated||0),   label: 'ALBUMS RATED' },
+    { val: String(d.totalStarred||0), label: 'SONGS STARRED' },
+    { val: Math.round(d.totalMins||0)+'m', label: 'LISTENED' },
+    { val: String(d.avgScore||'—'),   label: 'AVG SCORE' }
+  ];
+  var colW_st = CW / 4;
+  var numY    = footerY + Math.round(footerH * 0.45);
+  var lblY    = footerY + Math.round(footerH * 0.62);
+
+  statsData.forEach(function(st, si) {
+    var cx_st = colW_st*si + colW_st/2;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'italic bold 72px Georgia,serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(st.val, cx_st, numY);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '500 20px "DM Sans",sans-serif';
+    ctx.fillText(st.label, cx_st, lblY);
+  });
+  ctx.textAlign = 'left';
+
+  // Wordmark
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.font = 'italic 22px Georgia,serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Album Rater · sillymcwilly1.github.io/2026-Albums', CW/2, footerY+footerH-36);
+  ctx.textAlign = 'left';
+
 } // ← end drawCard
