@@ -152,14 +152,78 @@
         <p class="page-eyebrow">replay</p>
         <h2>Listening <em>Replay</em></h2>
       </div>
-      <div class="chart-card replay-card" style="margin-bottom:20px">
-        <h3>Most Replayed — All Time</h3>
-        <canvas id="replayBarChart"></canvas>
+
+      <!-- Stat pills -->
+      <div class="replay-stat-row" id="replay-stats">
+        <div class="replay-stat-pill">
+          <span class="replay-stat-num" id="rstat-mins">—</span>
+          <span class="replay-stat-lbl">this week</span>
+        </div>
+        <div class="replay-stat-pill">
+          <span class="replay-stat-num" id="rstat-sessions">—</span>
+          <span class="replay-stat-lbl">sessions</span>
+        </div>
+        <div class="replay-stat-pill">
+          <span class="replay-stat-num" id="rstat-albums">—</span>
+          <span class="replay-stat-lbl">albums played</span>
+        </div>
+        <div class="replay-stat-pill">
+          <span class="replay-stat-num" id="rstat-peak">—</span>
+          <span class="replay-stat-lbl">biggest day</span>
+        </div>
       </div>
-      <div class="chart-card replay-card">
-        <h3>Play Timeline — Minutes per Day</h3>
-        <canvas id="replayLineChart"></canvas>
+
+      <!-- Most played bar chart -->
+      <div class="replay-card">
+        <div class="replay-card-label">most played all time</div>
+        <div id="replay-bar-list"></div>
       </div>
+
+      <!-- Two col: when you listen + patterns -->
+      <div class="replay-two-col">
+
+        <div class="replay-card">
+          <div class="replay-card-label">when you listen</div>
+          <!-- Scrollable DOW history -->
+          <div class="replay-dow-scroll-wrap">
+            <div class="replay-dow-nav">
+              <button class="replay-dow-btn" id="dow-prev">&#8592;</button>
+              <span class="replay-dow-range" id="dow-range-label">This week</span>
+              <button class="replay-dow-btn" id="dow-next">&#8594;</button>
+            </div>
+            <div class="replay-dow-grid" id="dow-grid"></div>
+          </div>
+        </div>
+
+        <div class="replay-card">
+          <div class="replay-card-label">patterns</div>
+          <div class="replay-insights" id="replay-insights"></div>
+        </div>
+
+      </div>
+
+      <!-- Listening calendar heatmap -->
+      <div class="replay-card">
+        <div class="replay-card-label">
+          listening calendar
+          <span class="replay-cal-nav">
+            <button class="replay-dow-btn" id="cal-prev">&#8592;</button>
+            <span id="cal-range-label">Last 12 weeks</span>
+            <button class="replay-dow-btn" id="cal-next">&#8594;</button>
+          </span>
+        </div>
+        <div class="replay-cal-wrap" id="replay-cal"></div>
+        <div class="replay-cal-legend">
+          <span class="replay-cal-legend-lbl">less</span>
+          <div class="replay-cal-legend-swatch" style="opacity:0.07"></div>
+          <div class="replay-cal-legend-swatch" style="opacity:0.25"></div>
+          <div class="replay-cal-legend-swatch" style="opacity:0.5"></div>
+          <div class="replay-cal-legend-swatch" style="opacity:0.72"></div>
+          <div class="replay-cal-legend-swatch" style="opacity:0.92"></div>
+          <span class="replay-cal-legend-lbl">more</span>
+        </div>
+      </div>
+
     </div>
 
     <!-- ── WEEK IN REVIEW PAGE ── -->
@@ -198,7 +262,6 @@
 
   </div><!-- #app -->
 
-<script src="drawCard.js" defer></script>
-<script src="script.js" defer></script>
+  <script src="script.js" defer></script>
 </body>
 </html>
