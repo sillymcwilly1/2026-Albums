@@ -498,7 +498,7 @@ function drawCard(d) {
   });
 
   // ── FOOTER BAND — stats live here ────────────────────────────
-  var footerY = 1200;
+  var footerY = 1500;
   var footerH = CH - footerY;
 
   ctx.fillStyle = toC(A);
