@@ -461,12 +461,12 @@ function drawCard(d) {
   if (r2) colorByAlbum[r2.albums.name] = C;
 
   var rowH_sl = 34;
-  var maxRows = Math.floor((1180 - (slY+20)) / rowH_sl);
+  var maxRows = Math.floor((footerY - 40 - (slY+20)) / rowH_sl);
   var songs   = d.starredSongs || [];
 
   songs.slice(0, maxRows).forEach(function(sg, si) {
     var ry    = slY + 20 + si*rowH_sl;
-    if (ry + rowH_sl > 1180) return;
+    if (ry + rowH_sl > footerY - 40) return;
     var col   = colorByAlbum[sg.album] || A;
     var even  = si%2 === 0;
 
