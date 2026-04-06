@@ -825,10 +825,11 @@ async function generateWeekReview() {
 
   // Second: if we have fewer than 9, fill from recently played albums' ratings
   if (starredSongs.length < 9) {
-    var { data: recentRatings } = await db.from('ratings')
+var recentResult = await db.from('ratings')
       .select('*, albums(*)')
       .order('updated_at', { ascending: false })
       .limit(20);
+    var recentRatings = recentResult.data || [];
     (recentRatings || []).forEach(function(r) {
       // Skip albums already included above
       var alreadyIncluded = weekRatings.some(function(wr) { return wr.id === r.id; });
