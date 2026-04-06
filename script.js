@@ -639,124 +639,476 @@ function renderBarChart(data) {
 // REPLAY TRACKER
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// REPLAY TRACKER — full dashboard
+// ═══════════════════════════════════════════════════════════════
+
+// Module-level state for scrollable sections
+var _replayLogs     = [];
+var _replayByDate   = {};   // { 'YYYY-MM-DD': { albumName: mins } }
+var _replayAllDates = [];   // sorted array of all date strings
+var _dowWeekOffset  = 0;    // 0 = current week, -1 = previous, etc.
+var _calWeekOffset  = 0;    // 0 = last 12 weeks, -12 = previous 12, etc.
+
 async function loadReplayTracker() {
-  var allLogs = [], page = 0;
+  var allLogs = [], pg = 0;
   while (true) {
     var result = await db.from('play_logs').select('*')
       .order('logged_at', { ascending: true })
-      .range(page*1000, (page+1)*1000-1);
+      .range(pg*1000, (pg+1)*1000-1);
     if (result.error || !result.data || result.data.length === 0) break;
     allLogs = allLogs.concat(result.data);
     if (result.data.length < 1000) break;
-    page++;
+    pg++;
   }
   if (allLogs.length === 0) return;
-  renderReplayBar(allLogs);
-  renderReplayLine(allLogs);
+
+  _replayLogs = allLogs;
+
+  // Build byDate map
+  _replayByDate = {};
+  allLogs.forEach(function(log) {
+    var date = log.logged_at.substring(0,10);
+    var mins = log.duration_ms ? Math.round(log.duration_ms/60000) : 0;
+    if (!_replayByDate[date]) _replayByDate[date] = {};
+    _replayByDate[date][log.album_name] = (_replayByDate[date][log.album_name]||0) + mins;
+  });
+  _replayAllDates = Object.keys(_replayByDate).sort();
+
+  _dowWeekOffset = 0;
+  _calWeekOffset = 0;
+
+  renderReplayStats();
+  renderReplayBar();
+  renderReplayDow();
+  renderReplayInsights();
+  renderReplayCal();
+  wireReplayNav();
 }
 
-function renderReplayBar(logs) {
+function renderReplayStats() {
+  // This week minutes
+  var now     = new Date();
+  var weekAgo = new Date(); weekAgo.setDate(now.getDate()-7);
+  var weekMins = 0, weekSessions = 0, weekAlbums = new Set(), dowMap = {};
+  _replayLogs.forEach(function(log) {
+    var d = new Date(log.logged_at);
+    if (d < weekAgo) return;
+    var mins = log.duration_ms ? Math.round(log.duration_ms/60000) : 0;
+    weekMins += mins; weekSessions++;
+    weekAlbums.add(log.album_name);
+    var day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    dowMap[day] = (dowMap[day]||0) + mins;
+  });
+  var peakDay = Object.entries(dowMap).sort(function(a,b){return b[1]-a[1];})[0];
+
+  var el = function(id) { return document.getElementById(id); };
+  if (el('rstat-mins'))    el('rstat-mins').textContent    = weekMins+'m';
+  if (el('rstat-sessions'))el('rstat-sessions').textContent= weekSessions;
+  if (el('rstat-albums'))  el('rstat-albums').textContent  = weekAlbums.size;
+  if (el('rstat-peak'))    el('rstat-peak').textContent    = peakDay ? peakDay[0] : '—';
+}
+
+function renderReplayBar() {
   var minuteMap = {};
-  logs.forEach(function(log) {
+  _replayLogs.forEach(function(log) {
     var mins = log.duration_ms ? Math.round(log.duration_ms/60000) : 0;
     minuteMap[log.album_name] = (minuteMap[log.album_name]||0) + mins;
   });
   var sorted = Object.entries(minuteMap).filter(function(e){return e[1]>0;})
-    .sort(function(a,b){return b[1]-a[1];}).slice(0,12);
-  if (sorted.length === 0) return;
+    .sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+  if (!sorted.length) return;
 
-  var labels = sorted.map(function(e) { return e[0].length>16?e[0].substring(0,15)+'…':e[0]; });
-  var values = sorted.map(function(e) { return e[1]; });
+  var maxVal = sorted[0][1];
+  var container = document.getElementById('replay-bar-list');
+  if (!container) return;
+  container.innerHTML = '';
 
-  if (replayBarInstance) replayBarInstance.destroy();
-  var ctx = document.getElementById('replayBarChart').getContext('2d');
-  var grad = ctx.createLinearGradient(0,0,0,300);
-  grad.addColorStop(0,'#7a6bbf'); grad.addColorStop(1,'#3c3489');
+  sorted.forEach(function(entry) {
+    var name = entry[0], mins = entry[1];
+    var pct  = Math.round((mins/maxVal)*100);
 
-  replayBarInstance = new Chart(ctx, {
-    type: 'bar',
-    data: { labels: labels, datasets: [{ data: values, backgroundColor: grad, borderRadius: 4, borderSkipped: false }] },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1e1c18', borderColor: '#302e28', borderWidth: 1,
-          titleColor: '#f0ece4', bodyColor: '#a8a49a',
-          callbacks: {
-            title: function(items) { return sorted[items[0].dataIndex][0]; },
-            label: function(item) { return item.raw+' min listened'; }
-          }
-        }
-      },
-      scales: {
-        x: { ticks: { color: '#6a6658', font: { size: 10 } }, grid: { color: '#302e28' } },
-        y: { ticks: { color: '#6a6658', callback: function(v){return v+'m';} }, grid: { color: '#302e28' } }
+    // Look up cached color for this album
+    var colorEntry = null;
+    Object.keys(albumColorCache).forEach(function(id) {
+      if (albumColorCache[id] && albumColorCache[id].albumName === name) colorEntry = albumColorCache[id];
+    });
+    // Fallback: find by album name across cache
+    if (!colorEntry) {
+      var keys = Object.keys(albumColorCache);
+      for (var ki=0; ki<keys.length; ki++) {
+        // store album name on cache entries when we load them
       }
     }
+    var barColor = colorEntry ? colorEntry.str : 'rgba(255,255,255,0.6)';
+
+    var row = document.createElement('div');
+    row.className = 'replay-bar-row';
+    row.innerHTML =
+      '<div class="replay-bar-art"></div>' +
+      '<div class="replay-bar-name" title="'+name+'">'+(name.length>18?name.substring(0,17)+'…':name)+'</div>' +
+      '<div class="replay-bar-track"><div class="replay-bar-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>' +
+      '<div class="replay-bar-val">'+mins+'m</div>';
+
+    // Fill art from albumColorCache image if available
+    var artEl = row.querySelector('.replay-bar-art');
+    var found = false;
+    Object.keys(albumColorCache).forEach(function(id) {
+      var ce = albumColorCache[id];
+      if (!found && ce && ce.img) {
+        // match by checking if img src contains album-related data — use first match heuristic
+      }
+    });
+
+    container.appendChild(row);
+
+    // Load art from albums table
+    db.from('albums').select('image_url,spotify_id').ilike('name', '%'+name.substring(0,10)+'%').limit(1)
+      .then(function(res) {
+        if (res.data && res.data[0] && res.data[0].image_url) {
+          artEl.style.backgroundImage    = 'url('+res.data[0].image_url+')';
+          artEl.style.backgroundSize     = 'cover';
+          artEl.style.backgroundPosition = 'center';
+          // Update bar color from cache
+          var sid = res.data[0].spotify_id;
+          if (albumColorCache[sid]) {
+            row.querySelector('.replay-bar-fill').style.background = albumColorCache[sid].str;
+          } else {
+            loadAlbumColor(sid, res.data[0].image_url).then(function(ce) {
+              row.querySelector('.replay-bar-fill').style.background = ce.str;
+            });
+          }
+        }
+      });
   });
 }
 
-function renderReplayLine(logs) {
-  var byDate = {};
-  logs.forEach(function(log) {
-    var date = log.logged_at.substring(0,10);
-    var mins = log.duration_ms ? Math.round(log.duration_ms/60000) : 0;
-    if (!byDate[date]) byDate[date] = {};
-    byDate[date][log.album_name] = (byDate[date][log.album_name]||0) + mins;
+function getDowDataForWeek(offset) {
+  // Returns { Mon:mins, Tue:mins, ... } for the week starting (offset) weeks ago
+  var now     = new Date();
+  // Find Monday of current week
+  var dow     = now.getDay(); // 0=Sun
+  var monday  = new Date(now);
+  monday.setDate(now.getDate() - (dow === 0 ? 6 : dow-1) + offset*7);
+  monday.setHours(0,0,0,0);
+  var dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  var result   = {};
+  dayNames.forEach(function(d) { result[d] = 0; });
+
+  for (var di=0; di<7; di++) {
+    var d2 = new Date(monday); d2.setDate(monday.getDate()+di);
+    var key = d2.toISOString().substring(0,10);
+    var dayName = dayNames[di];
+    if (_replayByDate[key]) {
+      Object.values(_replayByDate[key]).forEach(function(v) { result[dayName] += v; });
+    }
+  }
+  return { data: result, monday: monday };
+}
+
+function renderReplayDow() {
+  var info    = getDowDataForWeek(_dowWeekOffset);
+  var data    = info.data;
+  var monday  = info.monday;
+  var sunday  = new Date(monday); sunday.setDate(monday.getDate()+6);
+
+  var fmt = function(d) { return (d.getMonth()+1)+'/'+d.getDate(); };
+  var rangeLabel = _dowWeekOffset === 0
+    ? 'This week'
+    : fmt(monday)+' – '+fmt(sunday);
+  var rangeEl = document.getElementById('dow-range-label');
+  if (rangeEl) rangeEl.textContent = rangeLabel;
+
+  var maxVal = Math.max(1, Math.max.apply(null, Object.values(data)));
+  var dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  var grid = document.getElementById('dow-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  dayNames.forEach(function(day) {
+    var mins = data[day] || 0;
+    var pct  = Math.round((mins/maxVal)*100);
+    var isPeak = mins === maxVal && mins > 0;
+    var col = document.createElement('div');
+    col.className = 'replay-dow-col';
+    col.innerHTML =
+      '<div class="replay-dow-bar-wrap">' +
+        '<div class="replay-dow-bar'+(isPeak?' peak':'')+'" style="height:'+Math.max(4,pct)+'%"></div>' +
+      '</div>' +
+      '<div class="replay-dow-lbl">'+day.substring(0,1)+'</div>' +
+      '<div class="replay-dow-val'+(isPeak?' peak':'')+'">'+mins+'m</div>';
+    grid.appendChild(col);
   });
-  var dates    = Object.keys(byDate).sort();
+}
+
+function renderReplayInsights() {
+  var container = document.getElementById('replay-insights');
+  if (!container) return;
+
+  // Calculate insights from data
+  var now = new Date();
+  var weekAgo = new Date(); weekAgo.setDate(now.getDate()-7);
+  var twoWeeksAgo = new Date(); twoWeeksAgo.setDate(now.getDate()-14);
+
+  var thisMins = 0, lastMins = 0;
+  var albumDays = {}, streakDays = 0;
+
+  _replayLogs.forEach(function(log) {
+    var d    = new Date(log.logged_at);
+    var mins = log.duration_ms ? Math.round(log.duration_ms/60000) : 0;
+    if (d >= weekAgo)    thisMins += mins;
+    else if (d >= twoWeeksAgo) lastMins += mins;
+    if (d >= weekAgo) albumDays[log.album_name] = (albumDays[log.album_name]||new Set());
+    if (d >= weekAgo) albumDays[log.album_name].add(log.logged_at.substring(0,10));
+  });
+
+  // Streak
+  var today = now.toISOString().substring(0,10);
+  var checkDate = new Date(now);
+  streakDays = 0;
+  while (true) {
+    var key = checkDate.toISOString().substring(0,10);
+    if (_replayByDate[key]) { streakDays++; checkDate.setDate(checkDate.getDate()-1); }
+    else break;
+  }
+
+  // Most replayed this week
+  var topAlbumEntry = Object.entries(albumDays).sort(function(a,b){ return b[1].size-a[1].size; })[0];
+  var topAlbumName  = topAlbumEntry ? topAlbumEntry[0] : null;
+  var topAlbumDays  = topAlbumEntry ? topAlbumEntry[1].size : 0;
+
+  // DOW peak all time
+  var dowTotals = {Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
+  var dayIdx    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  _replayLogs.forEach(function(log) {
+    var d = new Date(log.logged_at);
+    var mins = log.duration_ms ? Math.round(log.duration_ms/60000) : 0;
+    var dn = dayIdx[d.getDay()];
+    if (dowTotals[dn] !== undefined) dowTotals[dn] += mins;
+  });
+  var peakDow = Object.entries(dowTotals).sort(function(a,b){return b[1]-a[1];})[0];
+
+  var pctChange = lastMins > 0 ? Math.round(((thisMins-lastMins)/lastMins)*100) : null;
+
+  var svgStreak =
+    '<svg width="28" height="28" viewBox="0 0 28 28" fill="none">'+
+    '<rect x="2" y="20" width="4" height="6" rx="1" fill="rgba(255,255,255,0.3)"/>'+
+    '<rect x="8" y="16" width="4" height="10" rx="1" fill="rgba(255,255,255,0.45)"/>'+
+    '<rect x="14" y="11" width="4" height="15" rx="1" fill="rgba(255,255,255,0.65)"/>'+
+    '<rect x="20" y="5" width="4" height="21" rx="1" fill="#fff"/>'+
+    '<path d="M22 4 L20 7 L24 7 Z" fill="#fff"/>'+
+    '</svg>';
+
+  var svgTrend = pctChange !== null && pctChange >= 0
+    ? '<svg width="28" height="28" viewBox="0 0 28 28" fill="none">'+
+      '<line x1="2" y1="24" x2="26" y2="24" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>'+
+      '<polyline points="3,21 9,17 15,13 21,7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '<path d="M19 5 L23 7 L21 11" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '</svg>'
+    : '<svg width="28" height="28" viewBox="0 0 28 28" fill="none">'+
+      '<line x1="2" y1="4" x2="26" y2="4" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>'+
+      '<polyline points="3,7 9,11 15,15 21,21" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '<path d="M19 23 L23 21 L21 17" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '</svg>';
+
+  var svgSun =
+    '<svg width="28" height="28" viewBox="0 0 28 28" fill="none">'+
+    '<circle cx="14" cy="14" r="5" fill="#fff"/>'+
+    '<line x1="14" y1="2" x2="14" y2="6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<line x1="14" y1="22" x2="14" y2="26" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<line x1="2" y1="14" x2="6" y2="14" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<line x1="22" y1="14" x2="26" y2="14" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<line x1="5" y1="5" x2="8" y2="8" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<line x1="20" y1="20" x2="23" y2="23" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<line x1="23" y1="5" x2="20" y2="8" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<line x1="5" y1="23" x2="8" y2="20" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" stroke-linecap="round"/>'+
+    '</svg>';
+
+  var svgRepeat =
+    '<svg width="28" height="28" viewBox="0 0 28 28" fill="none">'+
+    '<path d="M6 14 A8 8 0 0 1 22 14" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>'+
+    '<path d="M22 14 A8 8 0 0 1 6 14" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round" fill="none"/>'+
+    '<path d="M20 11 L23 14 L20 17" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+    '<path d="M8 17 L5 14 L8 11" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+    '<circle cx="14" cy="14" r="2" fill="#fff"/>'+
+    '</svg>';
+
+  var insights = [
+    {
+      icon: svgStreak,
+      text: streakDays > 1
+        ? '<strong>'+streakDays+'-day streak</strong> — you\'ve listened every day'
+        : 'No current streak — open the app daily to build one'
+    },
+    pctChange !== null ? {
+      icon: svgTrend,
+      text: pctChange >= 0
+        ? 'Up <strong>'+pctChange+'%</strong> vs last week\'s '+lastMins+'m'
+        : 'Down <strong>'+Math.abs(pctChange)+'%</strong> vs last week\'s '+lastMins+'m'
+    } : null,
+    peakDow && peakDow[1] > 0 ? {
+      icon: svgSun,
+      text: '<strong>'+peakDow[0]+'</strong> is your biggest listening day all time'
+    } : null,
+    topAlbumName ? {
+      icon: svgRepeat,
+      text: '<strong>'+
+        (topAlbumName.length>22?topAlbumName.substring(0,21)+'…':topAlbumName)+
+        '</strong> played '+topAlbumDays+' of the last 7 days'
+    } : null
+  ];
+
+  container.innerHTML = insights.filter(Boolean).map(function(ins) {
+    return '<div class="replay-insight-item">'+
+      '<div class="replay-insight-icon">'+ins.icon+'</div>'+
+      '<div class="replay-insight-text">'+ins.text+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function renderReplayCal() {
+  var container = document.getElementById('replay-cal');
+  if (!container) return;
+  container.innerHTML = '';
+
+  // Show 12 weeks ending at (today + calWeekOffset*7)
+  var endDate   = new Date();
+  endDate.setDate(endDate.getDate() + _calWeekOffset*7);
+  var startDate = new Date(endDate);
+  startDate.setDate(endDate.getDate() - 83); // 12 weeks = 84 days
+
+  // Update range label
+  var fmt = function(d) { return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate(); };
+  var lbl = document.getElementById('cal-range-label');
+  if (lbl) lbl.textContent = fmt(startDate)+' – '+fmt(endDate);
+
+  // Top 5 albums for Y-axis labels
   var totalMap = {};
-  logs.forEach(function(log) {
+  _replayLogs.forEach(function(log) {
     var mins = log.duration_ms ? Math.round(log.duration_ms/60000) : 0;
     totalMap[log.album_name] = (totalMap[log.album_name]||0) + mins;
   });
-  var top5 = Object.entries(totalMap).filter(function(e){return e[1]>0;})
+  var top5Albums = Object.entries(totalMap)
     .sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[0];});
-  if (top5.length === 0) return;
 
-  var lineColors = ['#7a6bbf','#c47a2e','#c4705a','#3a9e4a','#4a9eff'];
-  var datasets   = top5.map(function(album,i) {
-    return {
-      label: album.length>20?album.substring(0,19)+'…':album,
-      data: dates.map(function(d) { return (byDate[d]&&byDate[d][album])||0; }),
-      borderColor: lineColors[i], backgroundColor: lineColors[i]+'22',
-      tension: 0.4, fill: false, pointRadius: 2, pointHoverRadius: 6, borderWidth: 2
-    };
-  });
+  // Build grid: rows = albums (+ 1 total row), cols = 84 days
+  var numRows   = top5Albums.length + 1; // +1 for "total" row
+  var numCols   = 84;
+  var cellSize  = 14;
+  var cellGap   = 3;
+  var labelW    = 90; // width reserved for album name labels
+  var colW      = cellSize + cellGap;
+  var rowH      = cellSize + cellGap;
+  var headerH   = 20; // month label row height
 
-  if (replayLineInstance) replayLineInstance.destroy();
-  var ctx = document.getElementById('replayLineChart').getContext('2d');
-  replayLineInstance = new Chart(ctx, {
-    type: 'line',
-    data: { labels: dates, datasets: datasets },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { labels: { color: '#a8a49a', font: { size: 11 }, boxWidth: 10, usePointStyle: true, pointStyle: 'circle' } },
-        tooltip: {
-          backgroundColor: '#1e1c18', borderColor: '#302e28', borderWidth: 1,
-          titleColor: '#f0ece4', bodyColor: '#a8a49a',
-          callbacks: { label: function(item) { return ' '+item.dataset.label+': '+item.raw+'m'; } }
+  var totalW    = labelW + numCols * colW;
+  var totalH    = headerH + numRows * rowH;
+
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', totalW);
+  svg.setAttribute('height', totalH);
+  svg.style.display = 'block';
+
+  // Month labels
+  var prevMonth = -1;
+  for (var ci=0; ci<numCols; ci++) {
+    var d = new Date(startDate); d.setDate(startDate.getDate()+ci);
+    if (d.getDate() <= 7 && d.getMonth() !== prevMonth) {
+      prevMonth = d.getMonth();
+      var mNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var t = document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x', labelW + ci*colW);
+      t.setAttribute('y', 12);
+      t.setAttribute('font-size', '9');
+      t.setAttribute('fill', 'rgba(255,255,255,0.32)');
+      t.setAttribute('font-family', 'DM Sans,sans-serif');
+      t.textContent = mNames[d.getMonth()];
+      svg.appendChild(t);
+    }
+  }
+
+  // Row labels + cells
+  var rowLabels = ['Total'].concat(top5Albums);
+  rowLabels.forEach(function(albumName, ri) {
+    var y = headerH + ri * rowH;
+
+    // Label
+    var lbl = document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.setAttribute('x', 0);
+    lbl.setAttribute('y', y + cellSize - 2);
+    lbl.setAttribute('font-size', '9');
+    lbl.setAttribute('fill', 'rgba(255,255,255,0.4)');
+    lbl.setAttribute('font-family', 'DM Sans,sans-serif');
+    var shortName = albumName.length > 11 ? albumName.substring(0,10)+'…' : albumName;
+    lbl.textContent = shortName;
+    svg.appendChild(lbl);
+
+    // Find max for this row (for opacity scaling)
+    var rowMax = 1;
+    for (var ci2=0; ci2<numCols; ci2++) {
+      var d2 = new Date(startDate); d2.setDate(startDate.getDate()+ci2);
+      var key2 = d2.toISOString().substring(0,10);
+      var val2 = 0;
+      if (_replayByDate[key2]) {
+        if (ri === 0) {
+          Object.values(_replayByDate[key2]).forEach(function(v){val2+=v;});
+        } else {
+          val2 = _replayByDate[key2][albumName]||0;
         }
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: '#6a6658', font: { size: 10 }, maxRotation: 0, autoSkip: false,
-            callback: function(val,index) {
-              var d = dates[index]; if (!d) return '';
-              var dt = new Date(d+'T00:00:00');
-              if (index===0||dt.getDay()===1) return (dt.getMonth()+1)+'/'+dt.getDate();
-              return '';
-            }
-          },
-          grid: { color: '#302e28' }
-        },
-        y: { ticks: { color: '#6a6658', callback: function(v){return v+'m';} }, grid: { color: '#302e28' } }
       }
+      if (val2 > rowMax) rowMax = val2;
+    }
+
+    // Cells
+    for (var ci=0; ci<numCols; ci++) {
+      var d = new Date(startDate); d.setDate(startDate.getDate()+ci);
+      var key = d.toISOString().substring(0,10);
+      var val = 0;
+      if (_replayByDate[key]) {
+        if (ri === 0) {
+          Object.values(_replayByDate[key]).forEach(function(v){val+=v;});
+        } else {
+          val = _replayByDate[key][albumName]||0;
+        }
+      }
+      var opacity = val > 0 ? Math.max(0.15, Math.min(0.95, val/rowMax*0.9)) : 0.05;
+      var rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x', labelW + ci*colW);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', cellSize);
+      rect.setAttribute('height', cellSize);
+      rect.setAttribute('rx', 2);
+      rect.setAttribute('fill', 'rgba(255,255,255,'+opacity.toFixed(2)+')');
+      rect.setAttribute('data-tip', (val>0?val+'m on ':'')+key);
+      svg.appendChild(rect);
     }
   });
+
+  container.appendChild(svg);
+}
+
+function wireReplayNav() {
+  var dowPrev = document.getElementById('dow-prev');
+  var dowNext = document.getElementById('dow-next');
+  var calPrev = document.getElementById('cal-prev');
+  var calNext = document.getElementById('cal-next');
+
+  if (dowPrev) dowPrev.onclick = function() {
+    _dowWeekOffset--; renderReplayDow();
+    if (dowNext) dowNext.disabled = false;
+  };
+  if (dowNext) dowNext.onclick = function() {
+    if (_dowWeekOffset < 0) { _dowWeekOffset++; renderReplayDow(); }
+    if (_dowWeekOffset >= 0 && dowNext) dowNext.disabled = true;
+  };
+  if (calPrev) calPrev.onclick = function() {
+    _calWeekOffset -= 12; renderReplayCal();
+    if (calNext) calNext.disabled = false;
+  };
+  if (calNext) calNext.onclick = function() {
+    if (_calWeekOffset < 0) { _calWeekOffset += 12; if (_calWeekOffset > 0) _calWeekOffset = 0; renderReplayCal(); }
+    if (_calWeekOffset >= 0 && calNext) calNext.disabled = true;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -808,41 +1160,14 @@ async function generateWeekReview() {
   var top5forChart  = Object.entries(albumMins).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[0];});
   var lineColors    = ['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
 
-// Pull starred songs from this week's top 3 albums only
-  // (uses all ratings data to find their top_songs, not just this week's ratings)
-  var starredSongs = [];
-
-  // First: songs from this week's rated albums
-  weekRatings.forEach(function(r) {
-    if (r.top_songs && r.top_songs.length > 0) {
+  var starredSongs  = [];
+  weekRatings.slice(0,6).forEach(function(r) {
+    if (r.top_songs&&r.top_songs.length>0) {
       r.top_songs.forEach(function(song) {
-        if (starredSongs.length < 9) {
-          starredSongs.push({ song: song, album: r.albums.name, artist: r.albums.artist });
-        }
+        if (starredSongs.length<9) starredSongs.push({song:song,album:r.albums.name,artist:r.albums.artist});
       });
     }
   });
-
-  // Second: if we have fewer than 9, fill from recently played albums' ratings
-  if (starredSongs.length < 9) {
-var recentResult = await db.from('ratings')
-      .select('*, albums(*)')
-      .order('updated_at', { ascending: false })
-      .limit(20);
-    var recentRatings = recentResult.data || [];
-    (recentRatings || []).forEach(function(r) {
-      // Skip albums already included above
-      var alreadyIncluded = weekRatings.some(function(wr) { return wr.id === r.id; });
-      if (alreadyIncluded) return;
-      if (r.top_songs && r.top_songs.length > 0) {
-        r.top_songs.forEach(function(song) {
-          if (starredSongs.length < 9) {
-            starredSongs.push({ song: song, album: r.albums.name, artist: r.albums.artist });
-          }
-        });
-      }
-    });
-  }
 
   var top3     = weekRatings.slice(0,3);
   var avgScore = top3.length?(top3.reduce(function(s,r){return s+r.rating;},0)/top3.length).toFixed(1):'—';
