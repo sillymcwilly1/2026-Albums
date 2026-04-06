@@ -811,7 +811,6 @@ async function generateWeekReview() {
 // Pull starred songs from this week's top 3 albums only
   // (uses all ratings data to find their top_songs, not just this week's ratings)
   var starredSongs = [];
-  var top3AlbumIds = top3.map(function(r) { return r ? r.id : null; });
 
   // First: songs from this week's rated albums
   weekRatings.forEach(function(r) {
