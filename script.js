@@ -1160,14 +1160,35 @@ async function generateWeekReview() {
   var top5forChart  = Object.entries(albumMins).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[0];});
   var lineColors    = ['#1DB954','#e8a030','#e05a3a','#4a9eff','#c084fc'];
 
-  var starredSongs  = [];
-  weekRatings.slice(0,6).forEach(function(r) {
-    if (r.top_songs&&r.top_songs.length>0) {
+var starredSongs = [];
+  weekRatings.forEach(function(r) {
+    if (r.top_songs && r.top_songs.length > 0) {
       r.top_songs.forEach(function(song) {
-        if (starredSongs.length<9) starredSongs.push({song:song,album:r.albums.name,artist:r.albums.artist});
+        if (starredSongs.length < 9) {
+          starredSongs.push({ song: song, album: r.albums.name, artist: r.albums.artist });
+        }
       });
     }
   });
+
+  if (starredSongs.length < 9) {
+    var recentResult = await db.from('ratings')
+      .select('*, albums(*)')
+      .order('updated_at', { ascending: false })
+      .limit(20);
+    var recentRatings = recentResult.data || [];
+    (recentRatings || []).forEach(function(r) {
+      var alreadyIncluded = weekRatings.some(function(wr) { return wr.id === r.id; });
+      if (alreadyIncluded) return;
+      if (r.top_songs && r.top_songs.length > 0) {
+        r.top_songs.forEach(function(song) {
+          if (starredSongs.length < 9) {
+            starredSongs.push({ song: song, album: r.albums.name, artist: r.albums.artist });
+          }
+        });
+      }
+    });
+  }
 
   var top3     = weekRatings.slice(0,3);
   var avgScore = top3.length?(top3.reduce(function(s,r){return s+r.rating;},0)/top3.length).toFixed(1):'—';
