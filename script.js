@@ -1288,6 +1288,9 @@ async function generateRecs() {
     .sort(function(a,b) { return (b.totalRating/b.count) - (a.totalRating/a.count); })
     .slice(0, 5);
 
+  // Get Spotify IDs for top rated artists
+  msg.textContent = 'Finding related artists…';
+
   var artistIds = [];
   for (var ai = 0; ai < Math.min(topArtists.length, 5); ai++) {
     try {
@@ -1295,72 +1298,74 @@ async function generateRecs() {
         'https://api.spotify.com/v1/search?q='+encodeURIComponent(topArtists[ai].name)+'&type=artist&limit=1'
       );
       if (artistRes && artistRes.artists && artistRes.artists.items.length > 0) {
-        artistIds.push(artistRes.artists.items[0].id);
+        artistIds.push({
+          id:   artistRes.artists.items[0].id,
+          name: artistRes.artists.items[0].name
+        });
       }
     } catch(e) {}
   }
 
-  // Get seed tracks from top albums
-  msg.textContent = 'Getting recommendations from Spotify…';
-
-  var seedArtists = artistIds.slice(0, 2).join(',');
-  var seedTracks  = '';
-
-  // Try to get a track from the top album
-  if (ratings[0] && ratings[0].albums.spotify_id) {
-    try {
-      var tracksRes = await spotifyFetch(
-        'https://api.spotify.com/v1/albums/'+ratings[0].albums.spotify_id+'/tracks?limit=1'
-      );
-      if (tracksRes && tracksRes.items && tracksRes.items.length > 0) {
-        seedTracks = tracksRes.items[0].id;
-      }
-    } catch(e) {}
-  }
-
-  var recsUrl = 'https://api.spotify.com/v1/recommendations?limit=10' +
-    (seedArtists ? '&seed_artists='+seedArtists : '') +
-    (seedTracks  ? '&seed_tracks='+seedTracks   : '');
-
-  if (!seedArtists && !seedTracks) {
+  if (artistIds.length === 0) {
     loading.classList.add('hidden');
     empty.innerHTML = '<p>Could not find your artists on Spotify. Make sure your top albums have artist info saved.</p>';
     empty.classList.remove('hidden');
     return;
   }
 
-  var recsData = await spotifyFetch(recsUrl);
-  if (!recsData || !recsData.tracks || recsData.tracks.length === 0) {
-    loading.classList.add('hidden');
-    empty.innerHTML = '<p>Spotify couldn\'t generate recommendations right now. Try again in a moment.</p>';
-    empty.classList.remove('hidden');
-    return;
+  // For each top artist, fetch related artists, then grab their latest album
+  msg.textContent = 'Exploring related artists…';
+  var ratedNames  = new Set(ratings.map(function(r) { return r.albums.name.toLowerCase(); }));
+  var ratedArtists = new Set(ratings.map(function(r) { return r.albums.artist.toLowerCase(); }));
+  var seenAlbums  = new Set();
+  var recAlbums   = [];
+
+  for (var ii = 0; ii < artistIds.length && recAlbums.length < 8; ii++) {
+    try {
+      var relRes = await spotifyFetch(
+        'https://api.spotify.com/v1/artists/'+artistIds[ii].id+'/related-artists'
+      );
+      if (!relRes || !relRes.artists) continue;
+
+      // Take first few related artists not already in your ratings
+      var candidates = relRes.artists.filter(function(a) {
+        return !ratedArtists.has(a.name.toLowerCase());
+      }).slice(0, 4);
+
+      for (var ci = 0; ci < candidates.length && recAlbums.length < 8; ci++) {
+        var relArtist = candidates[ci];
+        try {
+          var albumsRes = await spotifyFetch(
+            'https://api.spotify.com/v1/artists/'+relArtist.id+'/albums?include_groups=album&market=US&limit=5'
+          );
+          if (!albumsRes || !albumsRes.items || albumsRes.items.length === 0) continue;
+
+          // Pick most recent album
+          var album = albumsRes.items[0];
+          var albumName = album.name.toLowerCase();
+          if (seenAlbums.has(albumName)) continue;
+          if (ratedNames.has(albumName)) continue;
+          seenAlbums.add(albumName);
+
+          recAlbums.push({
+            album:      album.name,
+            artist:     relArtist.name,
+            year:       album.release_date ? album.release_date.substring(0,4) : '',
+            imageUrl:   album.images && album.images[0] ? album.images[0].url : null,
+            spotifyUrl: album.external_urls && album.external_urls.spotify,
+            spotifyId:  album.id,
+            relatedTo:  artistIds[ii].name,
+            popularity: relArtist.popularity || 0,
+            why:        buildWhyText(relArtist, artistIds[ii].name, ratings),
+            confidence: scoreConfidence(relArtist.popularity, ratings)
+          });
+        } catch(e) {}
+      }
+    } catch(e) {}
   }
 
-  // Dedupe to unique albums, filter out already-rated albums
-  var ratedNames = new Set(ratings.map(function(r) { return r.albums.name.toLowerCase(); }));
-  var seenAlbums = new Set();
-  var recAlbums  = [];
-
-  recsData.tracks.forEach(function(track) {
-    var album     = track.album;
-    var albumName = album.name.toLowerCase();
-    if (seenAlbums.has(albumName)) return;
-    if (ratedNames.has(albumName)) return;
-    seenAlbums.add(albumName);
-    recAlbums.push({
-      album:      album.name,
-      artist:     album.artists && album.artists[0] ? album.artists[0].name : '',
-      year:       album.release_date ? album.release_date.substring(0,4) : '',
-      imageUrl:   album.images && album.images[0] ? album.images[0].url : null,
-      spotifyUrl: album.external_urls && album.external_urls.spotify,
-      spotifyId:  album.id,
-      // Generate local reasoning based on taste match
-      why:        buildWhyText(track, ratings, topArtists),
-      confidence: scoreConfidence(track, ratings, topArtists)
-    });
-  });
-
+  // Sort by confidence then popularity
+  recAlbums.sort(function(a,b) { return b.confidence - a.confidence || b.popularity - a.popularity; });
   recAlbums = recAlbums.slice(0, 5);
 
   if (recAlbums.length === 0) {
@@ -1422,40 +1427,19 @@ async function generateRecs() {
   grid.classList.remove('hidden');
 }
 
-function buildWhyText(track, ratings, topArtists) {
-  var artist    = track.artists && track.artists[0] ? track.artists[0].name : '';
-  var topRated  = ratings[0] ? ratings[0].albums.name : '';
-  var topArtist = topArtists[0] ? topArtists[0].name : '';
-
-  // Find if any top artist matches
-  var matchArtist = topArtists.find(function(a) {
-    return track.artists && track.artists.some(function(ta) {
-      return ta.name.toLowerCase().includes(a.name.toLowerCase()) ||
-             a.name.toLowerCase().includes(ta.name.toLowerCase());
-    });
-  });
-
-  if (matchArtist) {
-    return 'Directly related to '+matchArtist.name+', one of your highest-rated artists — if you loved '+
-      (matchArtist.albums[0]||'their work')+', this is a natural next listen.';
-  }
-
-  var features = track.audio_features;
-  return 'Recommended based on your taste for artists like '+topArtist+
-    '. Shares sonic DNA with your top-rated albums — worth a full listen.';
+function buildWhyText(relArtist, seededFrom, ratings) {
+  var topRated = ratings[0] ? ratings[0].albums.name : 'your top album';
+  var topArtistName = seededFrom || 'your top artists';
+  return 'Spotify links '+relArtist.name+' directly to '+topArtistName+
+    ', one of your highest-rated artists. If you loved '+topRated+
+    ', this is a natural next listen — similar sonic world, worth exploring in full.';
 }
 
-function scoreConfidence(track, ratings, topArtists) {
-  var artist = track.artists && track.artists[0] ? track.artists[0].name.toLowerCase() : '';
-  var isTopArtist = topArtists.some(function(a) {
-    return a.name.toLowerCase().includes(artist) || artist.includes(a.name.toLowerCase());
-  });
-  if (isTopArtist) return 5;
-
-  // Score based on how many top artists are seeds
-  var avgRating = ratings.slice(0,5).reduce(function(s,r){return s+r.rating;},0) / Math.min(5, ratings.length);
-  if (avgRating >= 9) return 4;
-  if (avgRating >= 7) return 3;
+function scoreConfidence(popularity, ratings) {
+  var avgRating = ratings.slice(0,5).reduce(function(s,r){return s+r.rating;},0) / Math.min(5,ratings.length);
+  if (popularity >= 70) return 5;
+  if (popularity >= 50) return 4;
+  if (avgRating >= 8)   return 3;
   return 2;
 }
 
