@@ -35,6 +35,7 @@
         <button onclick="showPage('rankings')" class="nav-btn" id="nav-rankings">Rankings</button>
         <button onclick="showPage('replay')"   class="nav-btn" id="nav-replay">Replay</button>
         <button onclick="showPage('week')"     class="nav-btn" id="nav-week">Week</button>
+        <button onclick="showPage('recs')"     class="nav-btn" id="nav-recs">For You</button>
       </nav>
     </header>
 
@@ -252,6 +253,40 @@
       </div>
     </div>
 
+    <!-- ── RECOMMENDATIONS PAGE ── -->
+    <div id="page-recs" class="page page-recs hidden">
+      <div class="page-header">
+        <p class="page-eyebrow">for you</p>
+        <h2>What to <em>Listen To</em></h2>
+      </div>
+
+      <div class="recs-intro">
+        <p class="recs-intro-text">Claude analyzes your taste profile and finds albums worth your time.</p>
+        <button class="recs-generate-btn" onclick="generateRecs()">
+          <span class="recs-btn-label">Generate Recommendations</span>
+        </button>
+      </div>
+
+      <!-- Taste profile pill — shown after generation -->
+      <div id="recs-profile" class="recs-profile hidden"></div>
+
+      <!-- Loading state -->
+      <div id="recs-loading" class="hidden recs-loading">
+        <div class="recs-loading-inner">
+          <div class="recs-spinner"></div>
+          <p id="recs-loading-msg">Analyzing your taste profile…</p>
+        </div>
+      </div>
+
+      <!-- Results grid -->
+      <div id="recs-grid" class="recs-grid hidden"></div>
+
+      <!-- Empty state -->
+      <div id="recs-empty" class="hidden recs-empty">
+        <p>Rate at least 3 albums first so Claude has something to work with.</p>
+      </div>
+    </div>
+
     <!-- ── MODAL ── -->
     <div id="modal" class="modal hidden">
       <div class="modal-content">
@@ -262,7 +297,6 @@
 
   </div><!-- #app -->
 
-  <script src="drawCard.js" defer></script>
-<script src="script.js" defer></script>
+  <script src="script.js" defer></script>
 </body>
 </html>
