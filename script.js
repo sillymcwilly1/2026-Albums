@@ -1231,6 +1231,7 @@ var starredSongs = [];
 
   document.getElementById('week-loading').classList.add('hidden');
 
+  console.log('starredSongs:', JSON.stringify(starredSongs));
   drawCard({
     startDate:startDate, endDate:endDate,
     top3:top3, artImages:artImages,
