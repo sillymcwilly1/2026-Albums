@@ -1107,3 +1107,128 @@ textarea { min-height: 80px; resize: vertical; }
   .home-stats-row { padding: 20px; }
   .home-stat-divider { margin: 0 12px; }
 }
+
+/* ── RECOMMENDATIONS PAGE ─────────────────────────────────────── */
+body[data-page="recs"] { background: #6C47FF; }
+body[data-page="recs"] header { border-bottom: 3px solid #6C47FF; }
+body[data-page="recs"] .logo-bars span { background: #6C47FF; }
+body[data-page="recs"] .logo-bottom em { color: #6C47FF; }
+body[data-page="recs"] .nav-btn.active { color: #6C47FF; background: rgba(108,71,255,0.1); }
+
+.page-recs { color: #fff; }
+.page-recs .page-header h2 { color: #fff; }
+.page-recs .page-header h2 em { color: rgba(255,255,255,0.5); font-style: normal; }
+.page-recs .page-eyebrow { color: rgba(255,255,255,0.55); }
+
+.recs-intro {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; margin-bottom: 32px; flex-wrap: wrap;
+}
+.recs-intro-text {
+  font-size: 1rem; color: rgba(255,255,255,0.6); max-width: 400px; line-height: 1.6;
+}
+.recs-generate-btn {
+  background: #fff; color: #6C47FF; border: none;
+  padding: 14px 32px; border-radius: 999px;
+  font-family: 'DM Sans',sans-serif; font-size: 0.85rem;
+  font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+}
+.recs-generate-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(0,0,0,0.28); }
+
+/* Taste profile pill */
+.recs-profile {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 14px; padding: 18px 22px; margin-bottom: 28px;
+}
+.recs-profile-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase;
+  color: rgba(255,255,255,0.4); margin-bottom: 8px;
+}
+.recs-profile-text { font-size: 14px; color: rgba(255,255,255,0.8); line-height: 1.6; }
+
+/* Loading */
+.recs-loading { display: flex; justify-content: center; padding: 60px 0; }
+.recs-loading-inner {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px; color: rgba(255,255,255,0.6); font-size: 0.9rem; text-align: center;
+}
+.recs-spinner {
+  width: 36px; height: 36px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+/* Recs grid */
+.recs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+/* Individual rec card */
+.rec-card {
+  background: #fff; border-radius: 16px; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex; flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+.rec-card:hover { transform: translateY(-5px); box-shadow: 0 16px 40px rgba(0,0,0,0.25); }
+
+.rec-card-art {
+  width: 100%; aspect-ratio: 1; object-fit: cover;
+  background: #e8e0f8; display: block; flex-shrink: 0;
+}
+.rec-card-art-placeholder {
+  width: 100%; aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 3rem; color: rgba(108,71,255,0.3);
+}
+
+.rec-card-body { padding: 18px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+
+.rec-card-num {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: #6C47FF; opacity: 0.6;
+}
+.rec-card-name {
+  font-family: 'DM Serif Display',serif; font-size: 1.2rem;
+  font-style: italic; color: #1a1208; line-height: 1.2;
+}
+.rec-card-artist { font-size: 0.85rem; font-weight: 600; color: #6C47FF; }
+.rec-card-why {
+  font-size: 0.82rem; color: #5a4a38; line-height: 1.6;
+  margin-top: 6px; flex: 1;
+}
+
+.rec-card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid #f0e8e0;
+}
+.rec-card-confidence {
+  font-size: 11px; color: #9a8a7a; display: flex; align-items: center; gap: 6px;
+}
+.rec-confidence-dots { display: flex; gap: 3px; }
+.rec-confidence-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #6C47FF;
+}
+.rec-confidence-dot.empty { background: rgba(108,71,255,0.15); }
+
+.rec-card-spotify {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #6C47FF; color: #fff; text-decoration: none;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  padding: 6px 14px; border-radius: 999px;
+  transition: background 0.2s;
+}
+.rec-card-spotify:hover { background: #5535ee; }
+
+/* Empty */
+.recs-empty {
+  text-align: center; padding: 60px 20px;
+  color: rgba(255,255,255,0.5); font-style: italic; font-size: 1rem;
+}
