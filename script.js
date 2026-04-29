@@ -1240,8 +1240,11 @@ function downloadWeekCard() {
 // ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
-// RECOMMENDATIONS — Spotify-powered with taste-based reasoning
+// RECOMMENDATIONS — Claude AI via Cloudflare Worker proxy
 // ═══════════════════════════════════════════════════════════════
+
+// !! SET THIS to your Cloudflare Worker URL after deploying !!
+var WORKER_URL = 'https://tiny-snowflake-b70b.sillymcwilly1.workers.dev';
 
 async function generateRecs() {
   var grid    = document.getElementById('recs-grid');
@@ -1256,9 +1259,9 @@ async function generateRecs() {
   loading.classList.remove('hidden');
   msg.textContent = 'Analyzing your taste profile…';
 
-  // Pull top rated albums from Supabase
+  // Pull all ratings from Supabase
   var result = await db.from('ratings').select('*, albums(*)')
-    .order('rating', { ascending: false }).limit(30);
+    .order('rating', { ascending: false }).limit(50);
   var ratings = result.data || [];
 
   if (ratings.length < 3) {
@@ -1267,180 +1270,136 @@ async function generateRecs() {
     return;
   }
 
-  var token = localStorage.getItem('spotify_token');
-  if (!token) { loginSpotify(); return; }
+  // Build taste profile for Claude
+  var topAlbums = ratings.slice(0, 20).map(function(r) {
+    var line = r.rating + '/10 — ' + r.albums.name + ' by ' + r.albums.artist;
+    if (r.top_songs && r.top_songs.length > 0) {
+      line += ' (loved: ' + r.top_songs.slice(0,3).join(', ') + ')';
+    }
+    return line;
+  }).join('\n');
 
-  // Get Spotify IDs for top rated albums
-  msg.textContent = 'Finding your top artists on Spotify…';
+  var lowerRated = ratings.slice(20).map(function(r) {
+    return r.albums.name + ' by ' + r.albums.artist + ' (' + r.rating + '/10)';
+  }).join(', ');
 
-  // Collect top artists from your highest rated albums
-  var artistMap = {};
-  ratings.slice(0, 10).forEach(function(r) {
-    var artist = r.albums.artist;
-    if (!artistMap[artist]) artistMap[artist] = { name: artist, totalRating: 0, count: 0, albums: [] };
-    artistMap[artist].totalRating += r.rating;
-    artistMap[artist].count++;
-    artistMap[artist].albums.push(r.albums.name);
-  });
+  var prompt =
+    'You are a music recommendation expert with encyclopedic knowledge of albums across all genres and eras.\n\n' +
+    'Here are all the albums this listener has rated, from highest to lowest:\n' +
+    topAlbums + '\n\n' +
+    (lowerRated ? 'They also rated these lower: ' + lowerRated + '\n\n' : '') +
+    'Based on this taste profile:\n' +
+    '1. Identify the sonic and emotional patterns in what they love most\n' +
+    '2. Recommend exactly 5 albums they have NOT listed that they would likely love\n' +
+    '3. Prioritise albums from the last 3 years, but include classics if highly relevant\n' +
+    '4. For each rec, explain specifically why it fits — reference their actual rated albums by name\n\n' +
+    'IMPORTANT: Respond ONLY with a raw JSON array. No markdown, no backticks, no explanation outside the JSON.\n' +
+    'Format exactly:\n' +
+    '[{"album":"Album Name","artist":"Artist Name","year":2024,"why":"2-3 sentences referencing their specific rated albums","confidence":4}]\n' +
+    'confidence = 1 to 5 (5 = near certain they will love it). Return exactly 5 objects.';
 
-  // Search Spotify for artist IDs
-  var topArtists = Object.values(artistMap)
-    .sort(function(a,b) { return (b.totalRating/b.count) - (a.totalRating/a.count); })
-    .slice(0, 5);
+  try {
+    msg.textContent = 'Claude is thinking…';
 
-  // Get Spotify IDs for top rated artists
-  msg.textContent = 'Finding related artists…';
+    var response = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 1200,
+        messages:   [{ role: 'user', content: prompt }]
+      })
+    });
 
-  var artistIds = [];
-  for (var ai = 0; ai < Math.min(topArtists.length, 5); ai++) {
-    try {
-      var artistRes = await spotifyFetch(
-        'https://api.spotify.com/v1/search?q='+encodeURIComponent(topArtists[ai].name)+'&type=artist&limit=1'
-      );
-      if (artistRes && artistRes.artists && artistRes.artists.items.length > 0) {
-        artistIds.push({
-          id:   artistRes.artists.items[0].id,
-          name: artistRes.artists.items[0].name
+    if (!response.ok) {
+      throw new Error('Worker responded with ' + response.status);
+    }
+
+    var data = await response.json();
+    var raw  = data.content && data.content[0] ? data.content[0].text : '';
+    raw = raw.replace(/```json|```/g, '').trim();
+
+    var recs = JSON.parse(raw);
+    if (!Array.isArray(recs) || recs.length === 0) throw new Error('Bad response shape');
+
+    // Show taste profile pill
+    var topThree = ratings.slice(0,3).map(function(r) {
+      return '<strong>' + r.albums.name + '</strong>';
+    }).join(', ');
+    profile.innerHTML =
+      '<div class="recs-profile-label">Taste profile</div>' +
+      '<div class="recs-profile-text">Based on ' + ratings.length + ' rated albums — led by ' +
+      topThree + '. Tap any card to rate it immediately.</div>';
+    profile.classList.remove('hidden');
+
+    // Enrich each rec with Spotify art
+    msg.textContent = 'Finding album art…';
+    var enriched = await Promise.all(recs.map(async function(rec) {
+      try {
+        var q   = encodeURIComponent(rec.album + ' ' + rec.artist);
+        var res = await spotifyFetch(
+          'https://api.spotify.com/v1/search?q=' + q + '&type=album&limit=1'
+        );
+        if (res && res.albums && res.albums.items && res.albums.items.length > 0) {
+          var item = res.albums.items[0];
+          rec.imageUrl   = item.images && item.images[0] ? item.images[0].url : null;
+          rec.spotifyUrl = item.external_urls && item.external_urls.spotify;
+          rec.spotifyId  = item.id;
+        }
+      } catch(e) {}
+      return rec;
+    }));
+
+    // Render cards
+    loading.classList.add('hidden');
+    grid.innerHTML = '';
+
+    enriched.forEach(function(rec, i) {
+      var dots = '';
+      for (var di = 1; di <= 5; di++) {
+        dots += '<div class="rec-confidence-dot' + (di > rec.confidence ? ' empty' : '') + '"></div>';
+      }
+      var artHtml = rec.imageUrl
+        ? '<img class="rec-card-art" src="' + rec.imageUrl + '" alt="' + rec.album + '" />'
+        : '<div class="rec-card-art-placeholder">♪</div>';
+      var spotifyHtml = rec.spotifyUrl
+        ? '<a class="rec-card-spotify" href="' + rec.spotifyUrl + '" target="_blank" rel="noopener">Open in Spotify</a>'
+        : '<span></span>';
+
+      var card = document.createElement('div');
+      card.className = 'rec-card';
+      card.innerHTML =
+        artHtml +
+        '<div class="rec-card-body">' +
+          '<div class="rec-card-num">Pick ' + (i+1) + '</div>' +
+          '<div class="rec-card-name">' + rec.album + '</div>' +
+          '<div class="rec-card-artist">' + rec.artist + ' · ' + (rec.year||'') + '</div>' +
+          '<div class="rec-card-why">' + rec.why + '</div>' +
+          '<div class="rec-card-footer">' +
+            '<div class="rec-card-confidence"><div class="rec-confidence-dots">' + dots + '</div> Match</div>' +
+            spotifyHtml +
+          '</div>' +
+        '</div>';
+
+      if (rec.spotifyId) {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', function(e) {
+          if (e.target.closest('.rec-card-spotify')) return;
+          openAlbum(rec.spotifyId);
         });
       }
-    } catch(e) {}
-  }
+      grid.appendChild(card);
+    });
 
-  if (artistIds.length === 0) {
+    grid.classList.remove('hidden');
+
+  } catch(err) {
+    console.error('Recs error:', err);
     loading.classList.add('hidden');
-    empty.innerHTML = '<p>Could not find your artists on Spotify. Make sure your top albums have artist info saved.</p>';
+    empty.innerHTML = '<p>Something went wrong: ' + err.message +
+      '. Make sure your Worker URL is set correctly in script.js.</p>';
     empty.classList.remove('hidden');
-    return;
   }
-
-  // For each top artist, fetch related artists, then grab their latest album
-  msg.textContent = 'Exploring related artists…';
-  var ratedNames  = new Set(ratings.map(function(r) { return r.albums.name.toLowerCase(); }));
-  var ratedArtists = new Set(ratings.map(function(r) { return r.albums.artist.toLowerCase(); }));
-  var seenAlbums  = new Set();
-  var recAlbums   = [];
-
-  for (var ii = 0; ii < artistIds.length && recAlbums.length < 8; ii++) {
-    try {
-      var relRes = await spotifyFetch(
-        'https://api.spotify.com/v1/artists/'+artistIds[ii].id+'/related-artists'
-      );
-      if (!relRes || !relRes.artists) continue;
-
-      // Take first few related artists not already in your ratings
-      var candidates = relRes.artists.filter(function(a) {
-        return !ratedArtists.has(a.name.toLowerCase());
-      }).slice(0, 4);
-
-      for (var ci = 0; ci < candidates.length && recAlbums.length < 8; ci++) {
-        var relArtist = candidates[ci];
-        try {
-          var albumsRes = await spotifyFetch(
-            'https://api.spotify.com/v1/artists/'+relArtist.id+'/albums?include_groups=album&market=US&limit=5'
-          );
-          if (!albumsRes || !albumsRes.items || albumsRes.items.length === 0) continue;
-
-          // Pick most recent album
-          var album = albumsRes.items[0];
-          var albumName = album.name.toLowerCase();
-          if (seenAlbums.has(albumName)) continue;
-          if (ratedNames.has(albumName)) continue;
-          seenAlbums.add(albumName);
-
-          recAlbums.push({
-            album:      album.name,
-            artist:     relArtist.name,
-            year:       album.release_date ? album.release_date.substring(0,4) : '',
-            imageUrl:   album.images && album.images[0] ? album.images[0].url : null,
-            spotifyUrl: album.external_urls && album.external_urls.spotify,
-            spotifyId:  album.id,
-            relatedTo:  artistIds[ii].name,
-            popularity: relArtist.popularity || 0,
-            why:        buildWhyText(relArtist, artistIds[ii].name, ratings),
-            confidence: scoreConfidence(relArtist.popularity, ratings)
-          });
-        } catch(e) {}
-      }
-    } catch(e) {}
-  }
-
-  // Sort by confidence then popularity
-  recAlbums.sort(function(a,b) { return b.confidence - a.confidence || b.popularity - a.popularity; });
-  recAlbums = recAlbums.slice(0, 5);
-
-  if (recAlbums.length === 0) {
-    loading.classList.add('hidden');
-    empty.innerHTML = '<p>No new recommendations found. Rate more albums to improve results.</p>';
-    empty.classList.remove('hidden');
-    return;
-  }
-
-  // Show taste profile summary
-  loading.classList.add('hidden');
-  var topNames = ratings.slice(0,3).map(function(r){ return '<strong>'+r.albums.name+'</strong>'; }).join(', ');
-  profile.innerHTML =
-    '<div class="recs-profile-label">Your taste profile</div>' +
-    '<div class="recs-profile-text">Seeded from your top artists — ' +
-    topArtists.slice(0,3).map(function(a){ return '<strong>'+a.name+'</strong>'; }).join(', ') +
-    '. Tap any card to rate it.</div>';
-  profile.classList.remove('hidden');
-
-  // Render cards
-  grid.innerHTML = '';
-  recAlbums.forEach(function(rec, i) {
-    var dots = '';
-    for (var di = 1; di <= 5; di++) {
-      dots += '<div class="rec-confidence-dot'+(di > rec.confidence ? ' empty' : '')+'"></div>';
-    }
-    var artHtml = rec.imageUrl
-      ? '<img class="rec-card-art" src="'+rec.imageUrl+'" alt="'+rec.album+'" />'
-      : '<div class="rec-card-art-placeholder">♪</div>';
-    var spotifyHtml = rec.spotifyUrl
-      ? '<a class="rec-card-spotify" href="'+rec.spotifyUrl+'" target="_blank" rel="noopener">Open in Spotify</a>'
-      : '<span></span>';
-
-    var card = document.createElement('div');
-    card.className = 'rec-card';
-    card.innerHTML =
-      artHtml +
-      '<div class="rec-card-body">' +
-        '<div class="rec-card-num">Pick '+(i+1)+'</div>' +
-        '<div class="rec-card-name">'+rec.album+'</div>' +
-        '<div class="rec-card-artist">'+rec.artist+' · '+rec.year+'</div>' +
-        '<div class="rec-card-why">'+rec.why+'</div>' +
-        '<div class="rec-card-footer">' +
-          '<div class="rec-card-confidence"><div class="rec-confidence-dots">'+dots+'</div> Match</div>' +
-          spotifyHtml +
-        '</div>' +
-      '</div>';
-
-    if (rec.spotifyId) {
-      card.style.cursor = 'pointer';
-      card.addEventListener('click', function(e) {
-        if (e.target.closest('.rec-card-spotify')) return;
-        openAlbum(rec.spotifyId);
-      });
-    }
-    grid.appendChild(card);
-  });
-
-  grid.classList.remove('hidden');
-}
-
-function buildWhyText(relArtist, seededFrom, ratings) {
-  var topRated = ratings[0] ? ratings[0].albums.name : 'your top album';
-  var topArtistName = seededFrom || 'your top artists';
-  return 'Spotify links '+relArtist.name+' directly to '+topArtistName+
-    ', one of your highest-rated artists. If you loved '+topRated+
-    ', this is a natural next listen — similar sonic world, worth exploring in full.';
-}
-
-function scoreConfidence(popularity, ratings) {
-  var avgRating = ratings.slice(0,5).reduce(function(s,r){return s+r.rating;},0) / Math.min(5,ratings.length);
-  if (popularity >= 70) return 5;
-  if (popularity >= 50) return 4;
-  if (avgRating >= 8)   return 3;
-  return 2;
 }
 
 window.generateRecs = generateRecs;
