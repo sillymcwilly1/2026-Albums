@@ -106,9 +106,10 @@ function drawCard(d) {
   var ctx    = canvas.getContext('2d');
   ctx.clearRect(0, 0, CW_CARD, CH_CARD);
 
-  var CW  = CW_CARD;
-  var CH  = CH_CARD;
-  var PAD = PAD_CARD;
+  var CW      = CW_CARD;
+  var CH      = CH_CARD;
+  var PAD     = PAD_CARD;
+  var footerY = 1680;   // declared early so setlist maxRows calc can use it
 
   // Sample vivid colors from each album's art
   var A = (d.artImages && d.artImages[0]) ? sampleVividColor(d.artImages[0]) : [232,0,26];
@@ -498,7 +499,6 @@ function drawCard(d) {
   });
 
   // ── FOOTER BAND — stats live here ────────────────────────────
-  var footerY = 1680;
   var footerH = CH - footerY;
 
   ctx.fillStyle = toC(A);
