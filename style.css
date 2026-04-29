@@ -405,7 +405,9 @@ body[data-page="week"]     .nav-btn.active { color: #E8005A; background: rgba(23
 
 .home-shortcut--search   { --shortcut-color: #FF6B00; }
 .home-shortcut--rankings { --shortcut-color: #00C853; }
+.home-shortcut--replay   { --shortcut-color: #6C47FF; }
 .home-shortcut--week     { --shortcut-color: #E8005A; }
+.home-shortcut--recs     { --shortcut-color: #E8A020; }
 
 .shortcut-icon {
   font-size: 1.4rem;
@@ -1109,11 +1111,11 @@ textarea { min-height: 80px; resize: vertical; }
 }
 
 /* ── RECOMMENDATIONS PAGE ─────────────────────────────────────── */
-body[data-page="recs"] { background: #6C47FF; }
-body[data-page="recs"] header { border-bottom: 3px solid #6C47FF; }
-body[data-page="recs"] .logo-bars span { background: #6C47FF; }
-body[data-page="recs"] .logo-bottom em { color: #6C47FF; }
-body[data-page="recs"] .nav-btn.active { color: #6C47FF; background: rgba(108,71,255,0.1); }
+body[data-page="recs"] { background: #E8A020; }
+body[data-page="recs"] header { border-bottom: 3px solid #E8A020; }
+body[data-page="recs"] .logo-bars span { background: #E8A020; }
+body[data-page="recs"] .logo-bottom em { color: #E8A020; }
+body[data-page="recs"] .nav-btn.active { color: #E8A020; background: rgba(232,160,32,0.1); }
 
 .page-recs { color: #fff; }
 .page-recs .page-header h2 { color: #fff; }
@@ -1128,7 +1130,7 @@ body[data-page="recs"] .nav-btn.active { color: #6C47FF; background: rgba(108,71
   font-size: 1rem; color: rgba(255,255,255,0.6); max-width: 400px; line-height: 1.6;
 }
 .recs-generate-btn {
-  background: #fff; color: #6C47FF; border: none;
+  background: #fff; color: #E8A020; border: none;
   padding: 14px 32px; border-radius: 999px;
   font-family: 'DM Sans',sans-serif; font-size: 0.85rem;
   font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
@@ -1191,13 +1193,13 @@ body[data-page="recs"] .nav-btn.active { color: #6C47FF; background: rgba(108,71
 
 .rec-card-num {
   font-size: 10px; font-weight: 700; letter-spacing: 2px;
-  text-transform: uppercase; color: #6C47FF; opacity: 0.6;
+  text-transform: uppercase; color: #E8A020; opacity: 0.7;
 }
 .rec-card-name {
   font-family: 'DM Serif Display',serif; font-size: 1.2rem;
   font-style: italic; color: #1a1208; line-height: 1.2;
 }
-.rec-card-artist { font-size: 0.85rem; font-weight: 600; color: #6C47FF; }
+.rec-card-artist { font-size: 0.85rem; font-weight: 600; color: #E8A020; }
 .rec-card-why {
   font-size: 0.82rem; color: #5a4a38; line-height: 1.6;
   margin-top: 6px; flex: 1;
@@ -1214,18 +1216,18 @@ body[data-page="recs"] .nav-btn.active { color: #6C47FF; background: rgba(108,71
 .rec-confidence-dots { display: flex; gap: 3px; }
 .rec-confidence-dot {
   width: 7px; height: 7px; border-radius: 50%;
-  background: #6C47FF;
+  background: #E8A020;
 }
-.rec-confidence-dot.empty { background: rgba(108,71,255,0.15); }
+.rec-confidence-dot.empty { background: rgba(232,160,32,0.15); }
 
 .rec-card-spotify {
   display: inline-flex; align-items: center; gap: 6px;
-  background: #6C47FF; color: #fff; text-decoration: none;
+  background: #E8A020; color: #fff; text-decoration: none;
   font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
   padding: 6px 14px; border-radius: 999px;
   transition: background 0.2s;
 }
-.rec-card-spotify:hover { background: #5535ee; }
+.rec-card-spotify:hover { background: #d09010; }
 
 /* Empty */
 .recs-empty {
