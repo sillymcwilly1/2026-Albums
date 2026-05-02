@@ -1244,7 +1244,7 @@ function downloadWeekCard() {
 // ═══════════════════════════════════════════════════════════════
 
 // !! SET THIS to your Cloudflare Worker URL after deploying !!
-var WORKER_URL = 'https://tiny-snowflake-b70b.sillymcwilly1.workers.dev';
+var WORKER_URL = 'https://YOUR-WORKER-NAME.YOUR-USERNAME.workers.dev';
 
 async function generateRecs() {
   var grid    = document.getElementById('recs-grid');
@@ -1299,16 +1299,12 @@ async function generateRecs() {
     'confidence = 1 to 5 (5 = near certain they will love it). Return exactly 5 objects.';
 
   try {
-    msg.textContent = 'Claude is thinking…';
+    msg.textContent = 'Gemini is thinking…';
 
     var response = await fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
-        max_tokens: 1200,
-        messages:   [{ role: 'user', content: prompt }]
-      })
+      body: JSON.stringify({ prompt: prompt })
     });
 
     if (!response.ok) {
@@ -1316,7 +1312,7 @@ async function generateRecs() {
     }
 
     var data = await response.json();
-    var raw  = data.content && data.content[0] ? data.content[0].text : '';
+    var raw  = data.text || '';
     raw = raw.replace(/```json|```/g, '').trim();
 
     var recs = JSON.parse(raw);
