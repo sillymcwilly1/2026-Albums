@@ -1313,7 +1313,19 @@ async function generateRecs() {
 
     var data = await response.json();
     var raw  = data.text || '';
+    console.log('Gemini raw response:', raw.substring(0, 500));
+
+    // Strip markdown fences and any text before/after the JSON array
     raw = raw.replace(/```json|```/g, '').trim();
+
+    // Find the JSON array — extract everything between first [ and last ]
+    var start = raw.indexOf('[');
+    var end   = raw.lastIndexOf(']');
+    if (start === -1 || end === -1) {
+      console.error('No JSON array found in response:', raw);
+      throw new Error('Gemini did not return a valid JSON array. Response: ' + raw.substring(0, 200));
+    }
+    raw = raw.substring(start, end + 1);
 
     var recs = JSON.parse(raw);
     if (!Array.isArray(recs) || recs.length === 0) throw new Error('Bad response shape');
