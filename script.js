@@ -1244,7 +1244,7 @@ function downloadWeekCard() {
 // ═══════════════════════════════════════════════════════════════
 
 // !! SET THIS to your Cloudflare Worker URL after deploying !!
-var WORKER_URL = 'https://YOUR-WORKER-NAME.YOUR-USERNAME.workers.dev';
+var WORKER_URL = 'https://tiny-snowflake-b70b.sillymcwilly1.workers.dev';
 
 async function generateRecs() {
   var grid    = document.getElementById('recs-grid');
