@@ -1308,7 +1308,9 @@ async function generateRecs() {
     });
 
     if (!response.ok) {
-      throw new Error('Worker responded with ' + response.status);
+      var errData = await response.json().catch(function(){return {};});
+      console.error('Worker error response:', errData);
+      throw new Error('Worker responded with ' + response.status + ': ' + JSON.stringify(errData));
     }
 
     var data = await response.json();
