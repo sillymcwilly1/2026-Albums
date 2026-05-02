@@ -1280,13 +1280,21 @@ async function generateRecs() {
   }).join(', ');
 
   var prompt =
-    'You are a music expert. Here are albums this person rated highly:\n' +
+    'You are a music critic and crate-digger with deep knowledge of underground, indie, and emerging artists.\n\n' +
+    'This listener\'s top rated albums:\n' +
     topAlbums + '\n\n' +
     (lowerRated ? 'Rated lower (avoid similar): ' + lowerRated + '\n\n' : '') +
-    'Recommend exactly 5 albums NOT listed above that they would love. Recent albums preferred.\n\n' +
+    'Rules:\n' +
+    '1. ONLY recommend albums released between 2023 and 2025\n' +
+    '2. AVOID mainstream superstars (no Taylor Swift, Drake, Beyoncé, The Weeknd, etc.)\n' +
+    '3. Favour underground, cult, indie, critically acclaimed but lesser-known artists\n' +
+    '4. Each run must feel different — use randomness in your selection, do not default to the same 5 albums\n' +
+    '5. At least 2 of the 5 should be genuinely obscure picks the listener is unlikely to have heard\n\n' +
+    'Recommend exactly 5 albums NOT listed above. 1-2 sentences on why each fits their taste.\n\n' +
     'Respond ONLY with a raw JSON array, no markdown, no backticks:\n' +
-    '[{"album":"Name","artist":"Artist","year":2024,"why":"1-2 sentences why it fits their taste","confidence":4}]\n' +
-    'Return exactly 5 objects. confidence is 1-5.';
+    '[{"album":"Name","artist":"Artist","year":2024,"why":"why it fits","confidence":4}]\n' +
+    'Return exactly 5 objects. confidence is 1-5.\n\n' +
+    'Randomization seed: ' + Math.floor(Math.random() * 999999);
 
   try {
     msg.textContent = 'Gemini is thinking…';
