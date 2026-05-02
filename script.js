@@ -1271,12 +1271,8 @@ async function generateRecs() {
   }
 
   // Build taste profile for Claude
-  var topAlbums = ratings.slice(0, 20).map(function(r) {
-    var line = r.rating + '/10 — ' + r.albums.name + ' by ' + r.albums.artist;
-    if (r.top_songs && r.top_songs.length > 0) {
-      line += ' (loved: ' + r.top_songs.slice(0,3).join(', ') + ')';
-    }
-    return line;
+  var topAlbums = ratings.slice(0, 10).map(function(r) {
+    return r.rating + '/10 — ' + r.albums.name + ' by ' + r.albums.artist;
   }).join('\n');
 
   var lowerRated = ratings.slice(20).map(function(r) {
@@ -1284,19 +1280,13 @@ async function generateRecs() {
   }).join(', ');
 
   var prompt =
-    'You are a music recommendation expert with encyclopedic knowledge of albums across all genres and eras.\n\n' +
-    'Here are all the albums this listener has rated, from highest to lowest:\n' +
+    'You are a music expert. Here are albums this person rated highly:\n' +
     topAlbums + '\n\n' +
-    (lowerRated ? 'They also rated these lower: ' + lowerRated + '\n\n' : '') +
-    'Based on this taste profile:\n' +
-    '1. Identify the sonic and emotional patterns in what they love most\n' +
-    '2. Recommend exactly 5 albums they have NOT listed that they would likely love\n' +
-    '3. Prioritise albums from the last 3 years, but include classics if highly relevant\n' +
-    '4. For each rec, explain specifically why it fits — reference their actual rated albums by name\n\n' +
-    'IMPORTANT: Respond ONLY with a raw JSON array. No markdown, no backticks, no explanation outside the JSON.\n' +
-    'Format exactly:\n' +
-    '[{"album":"Album Name","artist":"Artist Name","year":2024,"why":"2-3 sentences referencing their specific rated albums","confidence":4}]\n' +
-    'confidence = 1 to 5 (5 = near certain they will love it). Return exactly 5 objects.';
+    (lowerRated ? 'Rated lower (avoid similar): ' + lowerRated + '\n\n' : '') +
+    'Recommend exactly 5 albums NOT listed above that they would love. Recent albums preferred.\n\n' +
+    'Respond ONLY with a raw JSON array, no markdown, no backticks:\n' +
+    '[{"album":"Name","artist":"Artist","year":2024,"why":"1-2 sentences why it fits their taste","confidence":4}]\n' +
+    'Return exactly 5 objects. confidence is 1-5.';
 
   try {
     msg.textContent = 'Gemini is thinking…';
