@@ -1285,7 +1285,7 @@ async function generateRecs() {
     topAlbums + '\n\n' +
     (lowerRated ? 'Rated lower (avoid similar): ' + lowerRated + '\n\n' : '') +
     'Rules:\n' +
-    '1. ONLY recommend albums released between 2023 and 2025\n' +
+    '1. ONLY recommend albums released after 2023\n' +
     '2. AVOID mainstream superstars (no Taylor Swift, Drake, Beyoncé, The Weeknd, etc.)\n' +
     '3. Favour underground, cult, indie, critically acclaimed but lesser-known artists\n' +
     '4. Each run must feel different — use randomness in your selection, do not default to the same 5 albums\n' +
