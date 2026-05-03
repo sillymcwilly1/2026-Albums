@@ -1323,7 +1323,7 @@ async function generateRecs() {
     '4. Each run must feel different — use randomness in your selection, do not default to the same 5 albums\n' +
     '5. At least 2 of the 5 should be genuinely obscure picks the listener is unlikely to have heard\n\n' +
     'Recommend exactly 5 albums NOT listed above. 1-2 sentences on why each fits their taste.\n\n' +
-    'STRICTLY verify your results and ensure the album name, artist, and release year are correct before responding.\n\n' +
+    'STRICTLY verify your results and ensure the album name, artist, and release year are correct before responding. If you cannot verify all details are correct, delete the recommendation and identify a new one.\n\n' +
     'Respond ONLY with a raw JSON array, no markdown, no backticks:\n' +
     '[{"album":"Name","artist":"Artist","year":2024,"why":"why it fits","confidence":4}]\n' +
     'Return exactly 5 objects. confidence is 1-5.\n\n' +
