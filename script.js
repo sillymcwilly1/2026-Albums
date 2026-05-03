@@ -444,19 +444,41 @@ async function openAlbum(spotifyId) {
   var year       = albumData.release_date ? albumData.release_date.split('-')[0] : '';
   var artistName = albumData.artists && albumData.artists[0] ? albumData.artists[0].name : '';
 
+  var tapScores = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
+
   document.getElementById('modal-body').innerHTML =
-    '<div class="modal-album-header">' +
-      '<img src="'+imgUrl+'" alt="'+albumData.name+'" />' +
-      '<div><h2>'+albumData.name+'</h2><p>'+artistName+'</p>' +
-        '<p style="color:var(--text-muted);font-size:0.76rem;margin-top:4px">'+year+'</p></div>' +
+    '<div class="modal-hero">' +
+      '<img class="modal-hero-art" src="'+imgUrl+'" alt="'+albumData.name+'" />' +
+      '<div class="modal-hero-overlay"></div>' +
+      '<div class="modal-hero-info">' +
+        '<div class="modal-hero-title">'+albumData.name+'</div>' +
+        '<div class="modal-hero-artist">'+artistName+'</div>' +
+        '<div class="modal-hero-year">'+year+'</div>' +
+      '</div>' +
     '</div>' +
-    '<label>Rating (0–10)</label>' +
-    '<input type="number" id="rating-input" min="0" max="10" step="0.1" value="'+ratingVal+'" placeholder="e.g. 8.5" />' +
-    '<label>Comments</label>' +
-    '<textarea id="comment-input" placeholder="Write your thoughts…">'+commentVal+'</textarea>' +
-    '<label>Top Songs</label>' +
-    '<div class="tracks-list">'+tracksHTML+'</div>' +
-    '<button class="save-btn" onclick="saveRating(\''+spotifyId+'\')">Save Rating</button>';
+    '<div class="modal-body-inner">' +
+      '<div class="modal-score-section">' +
+        '<span class="modal-score-label">Your rating</span>' +
+        '<div class="modal-score-row">' +
+          '<input type="number" class="modal-score-input" id="rating-input" min="0" max="10" step="0.5" value="'+ratingVal+'" placeholder="—" />' +
+          '<span class="modal-score-denom">/ 10</span>' +
+        '</div>' +
+        '<div class="modal-score-taps">' +
+          tapScores.map(function(s) {
+            return '<button class="modal-score-tap'+(ratingVal==s?' active':'')+'" onclick="setModalScore('+s+')">'+s+'</button>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+      '<div class="modal-comment-section">' +
+        '<span class="modal-score-label">Thoughts</span>' +
+        '<textarea class="modal-comment-input" id="comment-input" placeholder="Write your thoughts…">'+commentVal+'</textarea>' +
+      '</div>' +
+      '<div class="modal-songs-section">' +
+        '<span class="modal-songs-label">Top Songs ★</span>' +
+        '<div class="tracks-list">'+tracksHTML+'</div>' +
+      '</div>' +
+      '<button class="save-btn" onclick="saveRating(\''+spotifyId+'\')">Save Rating</button>' +
+    '</div>';
 
   // Apply vivid color to modal
   var modalContent = document.querySelector('.modal-content');
@@ -475,6 +497,16 @@ function toggleTrack(name, el) {
     selectedTracks.push(name); el.classList.add('selected'); el.querySelector('.track-check').textContent = '★';
   }
 }
+
+function setModalScore(score) {
+  var input = document.getElementById('rating-input');
+  if (input) input.value = score;
+  document.querySelectorAll('.modal-score-tap').forEach(function(btn) {
+    btn.classList.toggle('active', parseFloat(btn.textContent) === score);
+  });
+}
+
+window.setModalScore = setModalScore;
 
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
@@ -1285,7 +1317,7 @@ async function generateRecs() {
     topAlbums + '\n\n' +
     (lowerRated ? 'Rated lower (avoid similar): ' + lowerRated + '\n\n' : '') +
     'Rules:\n' +
-    '1. ONLY recommend albums released between 2024 and 2026\n' +
+    '1. ONLY recommend albums released between 2023 and 2025\n' +
     '2. AVOID mainstream superstars (no Taylor Swift, Drake, Beyoncé, The Weeknd, etc.)\n' +
     '3. Favour underground, cult, indie, critically acclaimed but lesser-known artists\n' +
     '4. Each run must feel different — use randomness in your selection, do not default to the same 5 albums\n' +
