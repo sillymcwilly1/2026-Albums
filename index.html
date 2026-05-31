@@ -266,36 +266,114 @@
 
     <!-- ── RECOMMENDATIONS PAGE ── -->
     <div id="page-recs" class="page page-recs hidden">
-      <div class="page-header">
+
+      <div class="recs-header">
         <p class="page-eyebrow">for you</p>
-        <h2>What to <em>Listen To</em></h2>
+        <h2>Find Your Next <em>Listen</em></h2>
+        <p class="recs-subtitle">Tune the filters, then let AI do the digging.</p>
       </div>
 
-      <div class="recs-intro">
-        <p class="recs-intro-text">Gemini analyzes your taste profile and finds albums worth your time.</p>
-        <button class="recs-generate-btn" onclick="generateRecs()">
-          <span class="recs-btn-label">Generate Recommendations</span>
+      <!-- ── FILTER PANEL ── -->
+      <div class="recs-filters" id="recs-filters">
+
+        <!-- Era -->
+        <div class="recs-filter-group">
+          <div class="recs-filter-label">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M7 4v3l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Era
+            <span class="recs-filter-optional">optional</span>
+          </div>
+          <div class="recs-chip-row" data-group="era" data-multi="false">
+            <button class="recs-chip" data-value="2026">2026</button>
+            <button class="recs-chip" data-value="2024-2025">2024–25</button>
+            <button class="recs-chip" data-value="2020s">2020s</button>
+            <button class="recs-chip" data-value="2010s">2010s</button>
+            <button class="recs-chip" data-value="2000s">2000s</button>
+            <button class="recs-chip" data-value="1990s">1990s</button>
+            <button class="recs-chip" data-value="1980s">1980s</button>
+            <button class="recs-chip" data-value="pre-1980">Pre‑1980</button>
+          </div>
+        </div>
+
+        <!-- Mood -->
+        <div class="recs-filter-group">
+          <div class="recs-filter-label">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C4.2 2 2 4.2 2 7s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5Z" stroke="currentColor" stroke-width="1.5"/><path d="M5 8.5s.8 1.5 2 1.5 2-1.5 2-1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="5.5" cy="6" r="0.75" fill="currentColor"/><circle cx="8.5" cy="6" r="0.75" fill="currentColor"/></svg>
+            Mood / Tone
+            <span class="recs-filter-optional">optional</span>
+          </div>
+          <div class="recs-chip-row" data-group="mood" data-multi="true">
+            <button class="recs-chip" data-value="euphoric / danceable">Euphoric</button>
+            <button class="recs-chip" data-value="melancholy / introspective">Melancholy</button>
+            <button class="recs-chip" data-value="raw / aggressive">Raw &amp; Aggressive</button>
+            <button class="recs-chip" data-value="dreamy / atmospheric">Dreamy</button>
+            <button class="recs-chip" data-value="intimate / acoustic">Intimate</button>
+            <button class="recs-chip" data-value="experimental / avant-garde">Experimental</button>
+            <button class="recs-chip" data-value="warm / soulful">Warm &amp; Soulful</button>
+            <button class="recs-chip" data-value="cinematic / orchestral">Cinematic</button>
+          </div>
+        </div>
+
+        <!-- Artist size -->
+        <div class="recs-filter-group">
+          <div class="recs-filter-label">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2l1.3 2.6L11 5l-2 2 .5 2.8L7 8.5 4.5 9.8 5 7 3 5l2.7-.4L7 2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            Artist Tier
+            <span class="recs-filter-optional">optional</span>
+          </div>
+          <div class="recs-chip-row" data-group="tier" data-multi="false">
+            <button class="recs-chip" data-value="megastar / globally iconic artist">
+              <span class="recs-chip-icon">⬛⬛⬛</span> Mega Icon
+            </button>
+            <button class="recs-chip" data-value="mid-tier / well-known but not mainstream">
+              <span class="recs-chip-icon">⬛⬜⬜</span> Mid-Tier
+            </button>
+            <button class="recs-chip" data-value="underground / cult / undiscovered">
+              <span class="recs-chip-icon">⬜⬜⬜</span> Hidden Gem
+            </button>
+          </div>
+        </div>
+
+        <!-- Inspiration albums -->
+        <div class="recs-filter-group">
+          <div class="recs-filter-label">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 7h4M7 5v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Inspire from my ratings
+            <span class="recs-filter-optional">pick up to 3</span>
+          </div>
+          <div id="recs-inspo-grid" class="recs-inspo-grid">
+            <div class="recs-inspo-loading">Loading your ratings…</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Generate button -->
+      <div class="recs-generate-wrap">
+        <button class="recs-generate-btn" onclick="generateRecs()" id="recs-gen-btn">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.2 4.2l1.4 1.4M12.4 12.4l1.4 1.4M4.2 13.8l1.4-1.4M12.4 5.6l1.4-1.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="9" cy="9" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
+          Generate Recommendations
         </button>
+        <p class="recs-generate-hint">No filters = broadest possible picks</p>
       </div>
 
-      <!-- Taste profile pill — shown after generation -->
-      <div id="recs-profile" class="recs-profile hidden"></div>
-
-      <!-- Loading state -->
+      <!-- Loading -->
       <div id="recs-loading" class="hidden recs-loading">
         <div class="recs-loading-inner">
           <div class="recs-spinner"></div>
-          <p id="recs-loading-msg">Analyzing your taste profile…</p>
+          <p id="recs-loading-msg">Reading your taste profile…</p>
         </div>
       </div>
 
-      <!-- Results grid -->
+      <!-- Results -->
+      <div id="recs-profile" class="recs-profile hidden"></div>
       <div id="recs-grid" class="recs-grid hidden"></div>
 
-      <!-- Empty state -->
+      <!-- Empty -->
       <div id="recs-empty" class="hidden recs-empty">
-        <p>Rate at least 3 albums first so Gemini has something to work with.</p>
+        <p>Rate at least 3 albums first so the AI has something to work with.</p>
       </div>
+
     </div>
 
     <!-- ── MODAL ── -->
@@ -307,7 +385,7 @@
     </div>
 
   </div><!-- #app -->
-<script src="drawCard.js" defer></script>
-<script src="script.js" defer></script>
+
+  <script src="script.js" defer></script>
 </body>
 </html>
