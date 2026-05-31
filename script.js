@@ -210,6 +210,10 @@ function showPage(page) {
   if (page === 'home')     loadHomeDashboard();
   if (page === 'rankings') loadRankings();
   if (page === 'replay')   loadReplayTracker();
+  if (page === 'recs') {
+    initRecsFilters();
+    loadRecsInspoGrid();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1272,11 +1276,105 @@ function downloadWeekCard() {
 // ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
-// RECOMMENDATIONS — Claude AI via Cloudflare Worker proxy
+// RECOMMENDATIONS — filter panel + Gemini via Worker
 // ═══════════════════════════════════════════════════════════════
 
-// !! SET THIS to your Cloudflare Worker URL after deploying !!
 var WORKER_URL = 'https://tiny-snowflake-b70b.sillymcwilly1.workers.dev';
+
+// ── Filter state ──────────────────────────────────────────────
+var recsFilterState = { era: null, mood: [], tier: null, inspo: [] };
+var recsAllRatings  = [];   // cached for inspo grid
+
+function initRecsFilters() {
+  // Wire single-select chip rows
+  document.querySelectorAll('.recs-chip-row[data-multi="false"]').forEach(function(row) {
+    var group = row.dataset.group;
+    row.querySelectorAll('.recs-chip').forEach(function(chip) {
+      chip.addEventListener('click', function() {
+        var wasActive = chip.classList.contains('active');
+        row.querySelectorAll('.recs-chip').forEach(function(c) { c.classList.remove('active'); });
+        if (!wasActive) {
+          chip.classList.add('active');
+          recsFilterState[group] = chip.dataset.value;
+        } else {
+          recsFilterState[group] = null;
+        }
+      });
+    });
+  });
+
+  // Wire multi-select chip rows
+  document.querySelectorAll('.recs-chip-row[data-multi="true"]').forEach(function(row) {
+    var group = row.dataset.group;
+    row.querySelectorAll('.recs-chip').forEach(function(chip) {
+      chip.addEventListener('click', function() {
+        chip.classList.toggle('active');
+        var vals = Array.from(row.querySelectorAll('.recs-chip.active')).map(function(c){return c.dataset.value;});
+        recsFilterState[group] = vals;
+      });
+    });
+  });
+}
+
+async function loadRecsInspoGrid() {
+  var grid = document.getElementById('recs-inspo-grid');
+  if (!grid) return;
+
+  var result = await db.from('ratings').select('*, albums(*)')
+    .order('rating', { ascending: false }).limit(30);
+  recsAllRatings = result.data || [];
+
+  if (!recsAllRatings.length) {
+    grid.innerHTML = '<div class="recs-inspo-loading">Rate some albums first to use inspiration.</div>';
+    return;
+  }
+
+  grid.innerHTML = '';
+  recsAllRatings.slice(0, 24).forEach(function(r) {
+    var wrapper = document.createElement('div');
+
+    var card = document.createElement('div');
+    card.className = 'recs-inspo-card';
+    card.dataset.id   = r.id;
+    card.dataset.name = r.albums.name;
+
+    if (r.albums.image_url) {
+      card.innerHTML = '<img src="'+r.albums.image_url+'" alt="'+r.albums.name+'" />';
+    } else {
+      card.innerHTML = '<div class="recs-inspo-placeholder">♪</div>';
+    }
+
+    // Check badge
+    var check = document.createElement('div');
+    check.className = 'recs-inspo-check';
+    check.textContent = '✓';
+    card.appendChild(check);
+
+    card.addEventListener('click', function() {
+      var already = recsFilterState.inspo.indexOf(r.albums.name);
+      if (already > -1) {
+        recsFilterState.inspo.splice(already, 1);
+        card.classList.remove('active');
+      } else if (recsFilterState.inspo.length < 3) {
+        recsFilterState.inspo.push(r.albums.name);
+        card.classList.add('active');
+      } else {
+        // Shake to indicate limit
+        card.style.animation = 'none';
+        card.style.transform = 'translateX(-4px)';
+        setTimeout(function() { card.style.transform = ''; }, 150);
+      }
+    });
+
+    var name = document.createElement('div');
+    name.className = 'recs-inspo-name';
+    name.textContent = r.albums.name.length > 14 ? r.albums.name.substring(0,13)+'…' : r.albums.name;
+
+    wrapper.appendChild(card);
+    wrapper.appendChild(name);
+    grid.appendChild(wrapper);
+  });
+}
 
 async function generateRecs() {
   var grid    = document.getElementById('recs-grid');
@@ -1289,12 +1387,15 @@ async function generateRecs() {
   empty.classList.add('hidden');
   profile.classList.add('hidden');
   loading.classList.remove('hidden');
-  msg.textContent = 'Analyzing your taste profile…';
+  msg.textContent = 'Reading your taste profile…';
 
-  // Pull all ratings from Supabase
-  var result = await db.from('ratings').select('*, albums(*)')
-    .order('rating', { ascending: false }).limit(50);
-  var ratings = result.data || [];
+  var ratings = recsAllRatings.length ? recsAllRatings : [];
+  if (!ratings.length) {
+    var result = await db.from('ratings').select('*, albums(*)')
+      .order('rating', { ascending: false }).limit(50);
+    ratings = result.data || [];
+    recsAllRatings = ratings;
+  }
 
   if (ratings.length < 3) {
     loading.classList.add('hidden');
@@ -1302,35 +1403,60 @@ async function generateRecs() {
     return;
   }
 
-  // Build taste profile for Claude
   var topAlbums = ratings.slice(0, 10).map(function(r) {
     return r.rating + '/10 — ' + r.albums.name + ' by ' + r.albums.artist;
   }).join('\n');
 
-  var lowerRated = ratings.slice(20).map(function(r) {
-    return r.albums.name + ' by ' + r.albums.artist + ' (' + r.rating + '/10)';
+  var lowerRated = ratings.slice(10, 20).map(function(r) {
+    return r.albums.name + ' by ' + r.albums.artist;
   }).join(', ');
 
+  // ── Build filter constraints for the prompt ────────────────
+  var constraints = [];
+
+  if (recsFilterState.era) {
+    if (recsFilterState.era === '2026') {
+      constraints.push('ONLY recommend albums released in 2026');
+    } else if (recsFilterState.era === '2024-2025') {
+      constraints.push('ONLY recommend albums released in 2024 or 2025');
+    } else if (recsFilterState.era === 'pre-1980') {
+      constraints.push('ONLY recommend albums released before 1980');
+    } else {
+      constraints.push('ONLY recommend albums from the ' + recsFilterState.era);
+    }
+  }
+
+  if (recsFilterState.mood && recsFilterState.mood.length > 0) {
+    constraints.push('The music MUST have a ' + recsFilterState.mood.join(' and ') + ' tone/mood — this is non-negotiable');
+  }
+
+  if (recsFilterState.tier) {
+    constraints.push('The artist MUST be a ' + recsFilterState.tier + ' — do not deviate from this');
+  }
+
+  if (recsFilterState.inspo && recsFilterState.inspo.length > 0) {
+    constraints.push('Use these specific albums as primary inspiration for your recommendations: ' + recsFilterState.inspo.join(', ') + ' — find albums that feel spiritually or sonically adjacent to these');
+  }
+
+  var constraintBlock = constraints.length > 0
+    ? 'STRICT REQUIREMENTS (must ALL be followed):\n' + constraints.map(function(c,i){return (i+1)+'. '+c;}).join('\n') + '\n\n'
+    : '';
+
   var prompt =
-    'You are a music critic and crate-digger with deep knowledge of underground, indie, and emerging artists.\n\n' +
-    'This listener\'s top rated albums:\n' +
-    topAlbums + '\n\n' +
+    'You are a music critic and crate-digger with encyclopedic knowledge of albums.\n\n' +
+    'This listener\'s top rated albums:\n' + topAlbums + '\n\n' +
     (lowerRated ? 'Rated lower (avoid similar): ' + lowerRated + '\n\n' : '') +
-    'Rules:\n' +
-    '1. ONLY recommend albums released between 2023 and 2025\n' +
-    '2. AVOID mainstream superstars (no Taylor Swift, Drake, Beyoncé, The Weeknd, etc.)\n' +
-    '3. Favour underground, cult, indie, critically acclaimed but lesser-known artists\n' +
-    '4. Each run must feel different — use randomness in your selection, do not default to the same 5 albums\n' +
-    '5. At least 2 of the 5 should be genuinely obscure picks the listener is unlikely to have heard\n\n' +
-    'Recommend exactly 5 albums NOT listed above. 1-2 sentences on why each fits their taste.\n\n' +
-    'STRICTLY verify your results and ensure the album name, artist, and release year are correct before responding. If you cannot verify all details are correct, delete the recommendation and identify a new one.\n\n' +
+    constraintBlock +
+    'Recommend exactly 5 albums NOT listed above.\n' +
+    (constraints.length === 0 ? 'Favour underground, cult, and lesser-known artists over mainstream superstars. Prioritise albums from the last 3 years.\n' : '') +
+    'At least 2 picks should be genuinely surprising — not the obvious choices.\n\n' +
     'Respond ONLY with a raw JSON array, no markdown, no backticks:\n' +
-    '[{"album":"Name","artist":"Artist","year":2024,"why":"why it fits","confidence":4}]\n' +
-    'Return exactly 5 objects. confidence is 1-5.\n\n' +
-    'Randomization seed: ' + Math.floor(Math.random() * 999999);
+    '[{"album":"Name","artist":"Artist","year":2024,"why":"1-2 sentences","confidence":4}]\n' +
+    'Return exactly 5 objects. confidence 1-5.\n\n' +
+    'Seed: ' + Math.floor(Math.random() * 999999);
 
   try {
-    msg.textContent = 'Gemini is thinking…';
+    msg.textContent = 'AI is digging through the crates…';
 
     var response = await fetch(WORKER_URL, {
       method: 'POST',
@@ -1348,63 +1474,78 @@ async function generateRecs() {
     var raw  = data.text || '';
     console.log('Gemini raw response:', raw.substring(0, 500));
 
-    // Strip markdown fences and any text before/after the JSON array
     raw = raw.replace(/```json|```/g, '').trim();
-
-    // Find the JSON array — extract everything between first [ and last ]
     var start = raw.indexOf('[');
     var end   = raw.lastIndexOf(']');
     if (start === -1 || end === -1) {
       console.error('No JSON array found in response:', raw);
-      throw new Error('Gemini did not return a valid JSON array. Response: ' + raw.substring(0, 200));
+      throw new Error('AI did not return a valid JSON array. Response: ' + raw.substring(0, 200));
     }
     raw = raw.substring(start, end + 1);
 
     var recs = JSON.parse(raw);
     if (!Array.isArray(recs) || recs.length === 0) throw new Error('Bad response shape');
 
-    // Show taste profile pill
-    var topThree = ratings.slice(0,3).map(function(r) {
-      return '<strong>' + r.albums.name + '</strong>';
-    }).join(', ');
+    // Profile pill — show active filters
+    var filterSummary = [];
+    if (recsFilterState.era)                               filterSummary.push(recsFilterState.era);
+    if (recsFilterState.mood && recsFilterState.mood.length) filterSummary.push(recsFilterState.mood.join(', '));
+    if (recsFilterState.tier)                              filterSummary.push(recsFilterState.tier);
+    if (recsFilterState.inspo && recsFilterState.inspo.length) filterSummary.push('inspired by ' + recsFilterState.inspo.join(', '));
+
+    var topThree = ratings.slice(0,3).map(function(r) { return '<strong>'+r.albums.name+'</strong>'; }).join(', ');
     profile.innerHTML =
-      '<div class="recs-profile-label">Taste profile</div>' +
-      '<div class="recs-profile-text">Based on ' + ratings.length + ' rated albums — led by ' +
-      topThree + '. Tap any card to rate it immediately.</div>';
+      '<div class="recs-profile-label">Generated with' + (filterSummary.length ? ' filters' : 'out filters') + '</div>' +
+      '<div class="recs-profile-text">' +
+      (filterSummary.length ? 'Filters: <strong>' + filterSummary.join(' · ') + '</strong>. ' : '') +
+      'Seeded from ' + ratings.length + ' ratings — ' + topThree + ' and more. Tap any card to rate it.</div>';
     profile.classList.remove('hidden');
 
-    // Enrich each rec with Spotify art
+    // Enrich with Spotify art — verified match only
     msg.textContent = 'Finding album art…';
     var enriched = await Promise.all(recs.map(async function(rec) {
       try {
         var q   = encodeURIComponent(rec.album + ' ' + rec.artist);
-        var res = await spotifyFetch(
-          'https://api.spotify.com/v1/search?q=' + q + '&type=album&limit=1'
-        );
+        var res = await spotifyFetch('https://api.spotify.com/v1/search?q='+q+'&type=album&limit=3');
         if (res && res.albums && res.albums.items && res.albums.items.length > 0) {
-          var item = res.albums.items[0];
-          rec.imageUrl   = item.images && item.images[0] ? item.images[0].url : null;
-          rec.spotifyUrl = item.external_urls && item.external_urls.spotify;
-          rec.spotifyId  = item.id;
+          var match = null;
+          var recAlbumLower  = rec.album.toLowerCase().trim();
+          var recArtistLower = rec.artist.toLowerCase().trim();
+          for (var mi = 0; mi < res.albums.items.length; mi++) {
+            var item       = res.albums.items[mi];
+            var itemAlbum  = item.name.toLowerCase().trim();
+            var itemArtist = (item.artists&&item.artists[0]?item.artists[0].name:'').toLowerCase().trim();
+            var recWords   = recAlbumLower.split(/\s+/).filter(function(w){return w.length>2;});
+            var shared     = recWords.filter(function(w){return itemAlbum.includes(w);}).length;
+            var albumMatch = recWords.length===0 || (shared/recWords.length)>=0.4;
+            var artistMatch= itemArtist.includes(recArtistLower.split(' ')[0]) || recArtistLower.includes(itemArtist.split(' ')[0]);
+            if (albumMatch && artistMatch) { match = item; break; }
+          }
+          if (match) {
+            rec.imageUrl   = match.images&&match.images[0]?match.images[0].url:null;
+            rec.spotifyUrl = match.external_urls&&match.external_urls.spotify;
+            rec.spotifyId  = match.id;
+            if (match.release_date) rec.year = match.release_date.substring(0,4);
+          }
         }
       } catch(e) {}
       return rec;
     }));
 
-    // Render cards
+    // Render
     loading.classList.add('hidden');
     grid.innerHTML = '';
 
     enriched.forEach(function(rec, i) {
       var dots = '';
-      for (var di = 1; di <= 5; di++) {
-        dots += '<div class="rec-confidence-dot' + (di > rec.confidence ? ' empty' : '') + '"></div>';
+      for (var di=1; di<=5; di++) {
+        dots += '<div class="rec-confidence-dot'+(di>rec.confidence?' empty':'')+'"></div>';
       }
       var artHtml = rec.imageUrl
-        ? '<img class="rec-card-art" src="' + rec.imageUrl + '" alt="' + rec.album + '" />'
+        ? '<img class="rec-card-art" src="'+rec.imageUrl+'" alt="'+rec.album+'" />'
         : '<div class="rec-card-art-placeholder">♪</div>';
       var spotifyHtml = rec.spotifyUrl
-        ? '<a class="rec-card-spotify" href="' + rec.spotifyUrl + '" target="_blank" rel="noopener">Open in Spotify</a>'
+        ? '<a class="rec-card-spotify" href="'+rec.spotifyUrl+'" target="_blank" rel="noopener">Play on Spotify</a>'
         : '<span></span>';
 
       var card = document.createElement('div');
@@ -1412,18 +1553,17 @@ async function generateRecs() {
       card.innerHTML =
         artHtml +
         '<div class="rec-card-body">' +
-          '<div class="rec-card-num">Pick ' + (i+1) + '</div>' +
-          '<div class="rec-card-name">' + rec.album + '</div>' +
-          '<div class="rec-card-artist">' + rec.artist + ' · ' + (rec.year||'') + '</div>' +
-          '<div class="rec-card-why">' + rec.why + '</div>' +
+          '<div class="rec-card-num">Pick '+(i+1)+'</div>' +
+          '<div class="rec-card-name">'+rec.album+'</div>' +
+          '<div class="rec-card-artist">'+rec.artist+' · '+(rec.year||'')+'</div>' +
+          '<div class="rec-card-why">'+rec.why+'</div>' +
           '<div class="rec-card-footer">' +
-            '<div class="rec-card-confidence"><div class="rec-confidence-dots">' + dots + '</div> Match</div>' +
+            '<div class="rec-card-confidence"><div class="rec-confidence-dots">'+dots+'</div> Match</div>' +
             spotifyHtml +
           '</div>' +
         '</div>';
 
       if (rec.spotifyId) {
-        card.style.cursor = 'pointer';
         card.addEventListener('click', function(e) {
           if (e.target.closest('.rec-card-spotify')) return;
           openAlbum(rec.spotifyId);
@@ -1437,13 +1577,15 @@ async function generateRecs() {
   } catch(err) {
     console.error('Recs error:', err);
     loading.classList.add('hidden');
-    empty.innerHTML = '<p>Something went wrong: ' + err.message +
-      '. Make sure your Worker URL is set correctly in script.js.</p>';
+    empty.innerHTML = '<p>Something went wrong: '+err.message+'</p>';
     empty.classList.remove('hidden');
   }
 }
 
-window.generateRecs = generateRecs;
+window.generateRecs     = generateRecs;
+window.initRecsFilters  = initRecsFilters;
+window.loadRecsInspoGrid= loadRecsInspoGrid;
+
 window.searchAlbums      = searchAlbums;
 window.openAlbum         = openAlbum;
 window.toggleTrack       = toggleTrack;
